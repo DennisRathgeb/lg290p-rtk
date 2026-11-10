@@ -1,0 +1,28 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            cxx: g++-11
+          - os: ubuntu-24.04
+            cxx: g++
+          - os: ubuntu-24.04
+            cxx: clang++
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: deps
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libgtest-dev libproj-dev proj-data clang-format
+      - name: configure (sanitizers, -Werror)
+        run: CXX=${{ matrix.cxx }} cmake --preset dev
+      - name: build
+        run: cmake --build --preset dev
+      - name: test
+        run: ctest --preset dev
+      - name: format
+        if: matrix.cxx == 'g++'
+        run: git ls-files '*.h' '*.cc' | xargs clang-format --dry-run --Werror
