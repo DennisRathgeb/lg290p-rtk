@@ -15,6 +15,7 @@ add_executable(lgrtk_tests
   epoch_test.cc
   lg290p_test.cc
   serial_test.cc
+  receiver_test.cc
   sim/sim_lg290p.cc
 )
 target_include_directories(lgrtk_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

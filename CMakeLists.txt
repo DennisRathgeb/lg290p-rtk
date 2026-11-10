@@ -22,6 +22,7 @@ add_library(lgrtk
   src/epoch.cc
   src/lg290p.cc
   src/serial.cc
+  src/receiver.cc
 )
 add_library(lgrtk::lgrtk ALIAS lgrtk)
 target_include_directories(lgrtk PUBLIC
