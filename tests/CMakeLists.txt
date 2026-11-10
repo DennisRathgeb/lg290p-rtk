@@ -37,3 +37,13 @@ if(LGRTK_BUILD_APPS)
            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cli_test.sh $<TARGET_FILE:lgrtk_cli> $<TARGET_FILE:sim_lg290p_tool>)
   set_tests_properties(CliTest.EndToEnd PROPERTIES TIMEOUT 120)
 endif()
+
+if(LGRTK_BUILD_DAEMON)
+  add_executable(lgrtkd_tests
+    daemon/config_test.cc
+  )
+  target_include_directories(lgrtkd_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries(lgrtkd_tests PRIVATE util lgrtkd_core GTest::gtest_main lgrtk_warnings)
+  target_compile_definitions(lgrtkd_tests PRIVATE LGRTK_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtest_discover_tests(lgrtkd_tests DISCOVERY_TIMEOUT 30)
+endif()

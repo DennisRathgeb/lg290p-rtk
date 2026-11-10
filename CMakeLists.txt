@@ -8,6 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(LGRTK_BUILD_TESTS "Build the tests" ${PROJECT_IS_TOP_LEVEL})
 option(LGRTK_BUILD_APPS "Build the lgrtk CLI" ${PROJECT_IS_TOP_LEVEL})
+option(LGRTK_BUILD_DAEMON "Build the lgrtkd daemon (needs toml++ and nlohmann/json, fetched if absent)" ${PROJECT_IS_TOP_LEVEL})
 option(LGRTK_BUILD_EXAMPLES "Build the examples" ${PROJECT_IS_TOP_LEVEL})
 option(LGRTK_WITH_PROJ "Build lgrtk::projection (needs PROJ)" ON)
 option(LGRTK_WERROR "Treat warnings as errors" OFF)
@@ -53,6 +54,18 @@ if(LGRTK_WITH_PROJ)
   else()
     message(STATUS "lgrtk: PROJ not found, lgrtk::projection disabled")
   endif()
+endif()
+
+# ---- daemon: internal core library (not installed) + lgrtkd ----
+if(LGRTK_BUILD_DAEMON)
+  include(cmake/DaemonDeps.cmake)
+  add_library(lgrtkd_core STATIC
+    src/daemon/config.cc
+  )
+  target_include_directories(lgrtkd_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_link_libraries(lgrtkd_core
+    PUBLIC lgrtk nlohmann_json::nlohmann_json
+    PRIVATE tomlplusplus::tomlplusplus $<BUILD_INTERFACE:lgrtk_warnings>)
 endif()
 
 if(LGRTK_BUILD_APPS)
