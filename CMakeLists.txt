@@ -18,6 +18,7 @@ find_package(Threads REQUIRED)
 add_library(lgrtk
   src/version.cc
   src/framer.cc
+  src/nmea.cc
 )
 add_library(lgrtk::lgrtk ALIAS lgrtk)
 target_include_directories(lgrtk PUBLIC
