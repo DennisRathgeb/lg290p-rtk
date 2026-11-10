@@ -65,6 +65,9 @@ if(LGRTK_BUILD_DAEMON)
     src/daemon/sky.cc
     src/daemon/event_loop.cc
     src/daemon/gpsd_server.cc
+    src/daemon/raw_tap.cc
+    src/daemon/chrony.cc
+    src/daemon/sd_notify.cc
   )
   target_include_directories(lgrtkd_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(lgrtkd_core
