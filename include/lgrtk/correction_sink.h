@@ -20,10 +20,16 @@ class CorrectionSink {
   virtual bool Inject(std::span<const uint8_t> rtcm_frames) = 0;
 
  protected:
+  /// Interface only: constructed, copied and moved as part of an
+  /// implementation (protected, so a sink cannot be sliced).
   CorrectionSink() = default;
+  /// @copydoc CorrectionSink()
   CorrectionSink(const CorrectionSink&) = default;
+  /// @copydoc CorrectionSink()
   CorrectionSink& operator=(const CorrectionSink&) = default;
+  /// @copydoc CorrectionSink()
   CorrectionSink(CorrectionSink&&) = default;
+  /// @copydoc CorrectionSink()
   CorrectionSink& operator=(CorrectionSink&&) = default;
 };
 
