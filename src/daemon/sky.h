@@ -18,13 +18,13 @@ namespace lgrtk::daemon {
 
 /// One satellite as gpsd reports it.
 struct SkySat {
-  uint16_t prn;  ///< satellite number as the receiver reports it
-  int16_t el;    ///< elevation in degrees, -1 unknown
-  int16_t az;    ///< azimuth in degrees, -1 unknown
-  int16_t ss;    ///< strongest C/N0 in dB-Hz, -1 not tracked
-  bool used;     ///< in the latest solution (GSA)
-  int gnssid;    ///< gpsd/u-blox id: 0 GPS, 1 SBAS, 2 Galileo, 3 BeiDou,
-                 ///< 5 QZSS, 6 GLONASS, 7 NavIC
+  uint16_t prn;           ///< satellite number as the receiver reports it
+  int16_t elevation_deg;  ///< elevation, -1 unknown
+  int16_t azimuth_deg;    ///< azimuth, -1 unknown
+  int16_t cn0_dbhz;       ///< strongest C/N0, -1 not tracked
+  bool used;              ///< in the latest solution (GSA)
+  int gnssid;  ///< gpsd/u-blox id: 0 GPS, 1 SBAS, 2 Galileo, 3 BeiDou,
+               ///< 5 QZSS, 6 GLONASS, 7 NavIC
 };
 
 /// Collects GSV groups (per constellation and signal) and GSA used lists.
@@ -43,9 +43,9 @@ class SkyTracker {
  private:
   struct InView {
     uint16_t prn;
-    int16_t el;
-    int16_t az;
-    int16_t ss;
+    int16_t elevation_deg;
+    int16_t azimuth_deg;
+    int16_t cn0_dbhz;
   };
   using GroupKey = std::pair<int, int>;  // gnssid of the talker, signal id
   void FeedGsv(std::string_view line);
