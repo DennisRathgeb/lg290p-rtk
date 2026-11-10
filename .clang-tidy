@@ -1,0 +1,37 @@
+# Google C++ naming (Google C++ Style Guide). Only these checks run; naming violations fail.
+# Names that must match the standard library or a third-party API (begin/end, gtest macros, ...)
+# are exempt via FunctionIgnoredRegexp below or a `// NOLINT(readability-identifier-naming)`.
+Checks: '-*,readability-identifier-naming,modernize-use-nodiscard,modernize-use-override,readability-braces-around-statements'
+WarningsAsErrors: 'readability-identifier-naming'
+HeaderFilterRegex: '(include|src|apps|tests)/.*'
+CheckOptions:
+  readability-identifier-naming.ClassCase: CamelCase
+  readability-identifier-naming.StructCase: CamelCase
+  readability-identifier-naming.EnumCase: CamelCase
+  readability-identifier-naming.TypeAliasCase: CamelCase
+  readability-identifier-naming.TypedefCase: CamelCase
+  readability-identifier-naming.FunctionCase: CamelCase
+  readability-identifier-naming.FunctionIgnoredRegexp: '^(begin|end|cbegin|cend|rbegin|rend|size|empty|data|swap|operator.*)$'
+  readability-identifier-naming.MethodCase: CamelCase
+  readability-identifier-naming.MethodIgnoredRegexp: '^(begin|end|cbegin|cend|rbegin|rend|size|empty|data|swap)$'
+  readability-identifier-naming.VariableCase: lower_case
+  readability-identifier-naming.ParameterCase: lower_case
+  readability-identifier-naming.MemberCase: lower_case
+  readability-identifier-naming.PrivateMemberCase: lower_case
+  readability-identifier-naming.PrivateMemberSuffix: _
+  readability-identifier-naming.ProtectedMemberCase: lower_case
+  readability-identifier-naming.ProtectedMemberSuffix: _
+  readability-identifier-naming.ConstexprVariableCase: CamelCase
+  readability-identifier-naming.ConstexprVariablePrefix: k
+  readability-identifier-naming.GlobalConstantCase: CamelCase
+  readability-identifier-naming.GlobalConstantPrefix: k
+  readability-identifier-naming.StaticConstantCase: CamelCase
+  readability-identifier-naming.StaticConstantPrefix: k
+  readability-identifier-naming.EnumConstantCase: CamelCase
+  readability-identifier-naming.EnumConstantPrefix: k
+  readability-identifier-naming.NamespaceCase: lower_case
+  readability-identifier-naming.MacroDefinitionCase: UPPER_CASE
+  # Google include guards end in '_' (LGRTK_FRAMER_H_), which UPPER_CASE rejects;
+
+  readability-identifier-naming.MacroDefinitionIgnoredRegexp: '^LGRTK_[A-Z0-9_]+_H_$'
+  readability-identifier-naming.TemplateParameterCase: CamelCase
