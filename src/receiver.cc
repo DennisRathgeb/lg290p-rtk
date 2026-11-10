@@ -1,7 +1,6 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/receiver.h"
 
-#include <time.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -11,15 +10,14 @@
 #include <cstring>
 #include <utility>
 
+#include "internal/clock.h"
 namespace lgrtk {
 
 namespace {
 
-int64_t NowNs() noexcept {
-  timespec ts{};
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return int64_t{ts.tv_sec} * 1'000'000'000 + ts.tv_nsec;
-}
+using internal::kNsPerMs;
+using internal::MonotonicNs;
+using internal::MsToNs;
 
 constexpr int kIdentifyRounds = 3;
 constexpr size_t kInjectBudget = 4096;  // bytes per loop iteration
@@ -27,7 +25,7 @@ constexpr int kPumpMs = 50;
 // USB bridges (the CH343 on the Waveshare board) hand over bytes left in
 // their FIFO from the previous session right after open; tcflush does not
 // reach them. Everything read this long after open is discarded.
-constexpr int64_t kOpenDrainNs = 150'000'000;
+constexpr int64_t kOpenDrainNs = MsToNs(150);
 
 bool PathExists(const std::string& p) { return ::access(p.c_str(), F_OK) == 0; }
 
@@ -130,7 +128,7 @@ void Lg290pReceiver::Stop() {
 ReceiverStatus Lg290pReceiver::Status() const {
   std::lock_guard lk(mu_);
   ReceiverStatus s = status_;
-  s.last_fix_age_ns = latest_ ? NowNs() - latest_->t_arrival_ns : -1;
+  s.last_fix_age_ns = latest_ ? MonotonicNs() - latest_->t_arrival_ns : -1;
   return s;
 }
 
@@ -143,7 +141,7 @@ FixSnapshot Lg290pReceiver::Snapshot() const {
   std::lock_guard lk(mu_);
   FixSnapshot s;
   s.fix = latest_;
-  s.age_ns = latest_ ? NowNs() - latest_->t_arrival_ns : -1;
+  s.age_ns = latest_ ? MonotonicNs() - latest_->t_arrival_ns : -1;
   s.state = status_.state;
   return s;
 }
@@ -194,7 +192,7 @@ void Lg290pReceiver::SetState(State s, std::string reason) {
   }
   ev.to = s;
   ev.reason = std::move(reason);
-  ev.t_ns = NowNs();
+  ev.t_ns = MonotonicNs();
   if (on_status_) {
     on_status_(ev);
   }
@@ -274,7 +272,7 @@ void Lg290pReceiver::Run() {
       SetState(State::kStreaming, "receiver ready");
       backoff_ms_ = opt_.backoff_min_ms;
       had_connection_ = true;
-      last_fix_t_ = std::max(last_fix_t_, NowNs());
+      last_fix_t_ = std::max(last_fix_t_, MonotonicNs());
       phase = Phase::kStream;
     }
 
@@ -305,8 +303,8 @@ bool Lg290pReceiver::TryOpen() {
     return false;
   }
   std::array<uint8_t, 2048> junk{};
-  const int64_t drain_until = NowNs() + kOpenDrainNs;
-  while (NowNs() < drain_until && port_->Read(junk, 20) >= 0) {
+  const int64_t drain_until = MonotonicNs() + kOpenDrainNs;
+  while (MonotonicNs() < drain_until && port_->Read(junk, 20) >= 0) {
   }
   framer_.Reset();
   epoch_.Reset();
@@ -321,8 +319,8 @@ bool Lg290pReceiver::TryOpen() {
 
 void Lg290pReceiver::BackoffWait() {
   const bool absent = !PathExists(opt_.port);
-  const int64_t until = NowNs() + int64_t{backoff_ms_} * 1'000'000;
-  while (!StopRequested() && NowNs() < until) {
+  const int64_t until = MonotonicNs() + MsToNs(backoff_ms_);
+  while (!StopRequested() && MonotonicNs() < until) {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     if (absent && PathExists(opt_.port)) {
       break;  // replugged: retry at once
@@ -344,7 +342,7 @@ bool Lg290pReceiver::Pump(int timeout_ms) {
   if (n == 0) {
     return true;
   }
-  const int64_t t = NowNs();
+  const int64_t t = MonotonicNs();
   const std::span<const uint8_t> data(buf.data(), static_cast<size_t>(n));
   if (on_raw_) {
     on_raw_(data);
@@ -440,8 +438,7 @@ bool Lg290pReceiver::Execute(const lg290p::Command& cmd,
   }
   const auto* p = reinterpret_cast<const uint8_t*>(cmd.text.data());
   size_t done = 0;
-  const int64_t deadline =
-      NowNs() + int64_t{opt_.command_timeout_ms} * 1'000'000;
+  const int64_t deadline = MonotonicNs() + MsToNs(opt_.command_timeout_ms);
   while (done < cmd.text.size()) {
     size_t w = 0;
     if (!port_->WriteSome(std::span(p + done, cmd.text.size() - done), w)) {
@@ -450,7 +447,7 @@ bool Lg290pReceiver::Execute(const lg290p::Command& cmd,
     }
     done += w;
     if (done < cmd.text.size()) {
-      if (NowNs() > deadline) {
+      if (MonotonicNs() > deadline) {
         return true;  // could not even send: treat as timeout
       }
       if (!Pump(5)) {
@@ -464,7 +461,7 @@ bool Lg290pReceiver::Execute(const lg290p::Command& cmd,
   awaiting_ = &cmd;
   awaiting_reply_ = &reply;
   while (awaiting_ != nullptr && !StopRequested()) {
-    const int64_t left_ms = (deadline - NowNs()) / 1'000'000;
+    const int64_t left_ms = (deadline - MonotonicNs()) / kNsPerMs;
     if (left_ms <= 0) {
       break;
     }
@@ -588,8 +585,8 @@ bool Lg290pReceiver::Configure() {
       return true;
     }
     // Let the receiver reboot, then talk to it again.
-    const int64_t until = NowNs() + 300'000'000;
-    while (NowNs() < until && !StopRequested()) {
+    const int64_t until = MonotonicNs() + 300'000'000;
+    while (MonotonicNs() < until && !StopRequested()) {
       if (!Pump(kPumpMs)) {
         return false;
       }
@@ -626,7 +623,7 @@ void Lg290pReceiver::DrainInject() {
   }
   ring_tail_.store(tail, std::memory_order_release);
   if (sent > 0) {
-    last_inject_ns_ = NowNs();
+    last_inject_ns_ = MonotonicNs();
     std::lock_guard lk(mu_);
     status_.rtcm_injected += sent;
   }
@@ -661,12 +658,11 @@ void Lg290pReceiver::ServeQueue() {
     }
     in_flight_.emplace(std::move(queue_.front()));
     queue_.pop_front();
-    in_flight_deadline_ =
-        NowNs() + int64_t{opt_.command_timeout_ms} * 1'000'000;
+    in_flight_deadline_ = MonotonicNs() + MsToNs(opt_.command_timeout_ms);
   }
   WriteInFlight();
   const bool sent = in_flight_->written >= in_flight_->cmd.text.size();
-  if (!port_ || NowNs() > in_flight_deadline_ ||
+  if (!port_ || MonotonicNs() > in_flight_deadline_ ||
       (sent && in_flight_->cmd.reply_to.empty())) {
     in_flight_->promise.set_value(std::nullopt);
     in_flight_.reset();
@@ -690,7 +686,7 @@ void Lg290pReceiver::FailPendingQueue() {
 
 int64_t Lg290pReceiver::StaleAfterNs() const {
   if (opt_.stale_after_ms > 0) {
-    return int64_t{opt_.stale_after_ms} * 1'000'000;
+    return MsToNs(opt_.stale_after_ms);
   }
   const double interval = interval_ms_ > 0.0 ? interval_ms_ : 1000.0;
   return static_cast<int64_t>(std::max(500.0, 3.0 * interval) * 1e6);
@@ -709,7 +705,7 @@ void Lg290pReceiver::StreamOnce() {
     SetState(State::kReconnecting, "port lost: " + opt_.port);
     return;
   }
-  const int64_t now = NowNs();
+  const int64_t now = MonotonicNs();
   if (now - last_fix_t_ > StaleAfterNs()) {
     State current;
     {
@@ -731,7 +727,7 @@ void Lg290pReceiver::StreamOnce() {
       }
       SetState(
           State::kStale,
-          "no epoch for " + std::to_string(StaleAfterNs() / 1'000'000) + " ms");
+          "no epoch for " + std::to_string(StaleAfterNs() / kNsPerMs) + " ms");
     }
   }
 }

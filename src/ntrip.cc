@@ -4,7 +4,6 @@
 #include <netdb.h>
 #include <poll.h>
 #include <sys/socket.h>
-#include <time.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -17,6 +16,7 @@
 #include <cstring>
 #include <utility>
 
+#include "internal/clock.h"
 #include "lgrtk/framer.h"
 #include "lgrtk/version.h"
 
@@ -24,11 +24,9 @@ namespace lgrtk {
 
 namespace {
 
-int64_t NowNs() noexcept {
-  timespec ts{};
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return int64_t{ts.tv_sec} * 1'000'000'000 + ts.tv_nsec;
-}
+using internal::kNsPerMs;
+using internal::MonotonicNs;
+using internal::MsToNs;
 
 class Socket {
  public:
@@ -116,7 +114,7 @@ Socket Connect(const std::string& host, int port, int timeout_ms,
 
 bool SendAll(int fd, std::string_view s) {
   size_t done = 0;
-  const int64_t deadline = NowNs() + 2'000'000'000;
+  const int64_t deadline = MonotonicNs() + 2'000'000'000;
   while (done < s.size()) {
     const ssize_t n =
         ::send(fd, s.data() + done, s.size() - done, MSG_NOSIGNAL);
@@ -125,7 +123,7 @@ bool SendAll(int fd, std::string_view s) {
       continue;
     }
     if (n < 0 && (errno == EAGAIN || errno == EINTR)) {
-      if (NowNs() > deadline) {
+      if (MonotonicNs() > deadline) {
         return false;
       }
       pollfd p{fd, POLLOUT, 0};
@@ -338,7 +336,7 @@ void NtripClient::Stop() {
 NtripStatus NtripClient::Status() const {
   std::lock_guard lk(mu_);
   NtripStatus s = status_;
-  s.last_data_age_ns = last_data_ns_ == 0 ? -1 : NowNs() - last_data_ns_;
+  s.last_data_age_ns = last_data_ns_ == 0 ? -1 : MonotonicNs() - last_data_ns_;
   return s;
 }
 
@@ -364,8 +362,8 @@ void NtripClient::SetState(NtripState s, const std::string& reason) {
 }
 
 bool NtripClient::BackoffWait() {
-  const int64_t until = NowNs() + int64_t{backoff_ms_} * 1'000'000;
-  while (!StopRequested() && NowNs() < until) {
+  const int64_t until = MonotonicNs() + MsToNs(backoff_ms_);
+  while (!StopRequested() && MonotonicNs() < until) {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
   backoff_ms_ = std::min(backoff_ms_ * 2, opt_.backoff_max_ms);
@@ -467,8 +465,7 @@ void NtripClient::Session() {
   // line.
   std::string head;
   std::array<char, 4096> buf{};
-  const int64_t deadline =
-      NowNs() + int64_t{opt_.connect_timeout_ms} * 1'000'000;
+  const int64_t deadline = MonotonicNs() + MsToNs(opt_.connect_timeout_ms);
   size_t header_end = std::string::npos;
   bool icy = false;
   while (!StopRequested()) {
@@ -482,7 +479,7 @@ void NtripClient::Session() {
       header_end += 4;
       break;
     }
-    if (NowNs() > deadline) {
+    if (MonotonicNs() > deadline) {
       fail("no response header from " + opt_.host);
       return;
     }
@@ -545,7 +542,7 @@ void NtripClient::Session() {
   {
     std::lock_guard lk(mu_);
     ++status_.connects;
-    last_data_ns_ = NowNs();
+    last_data_ns_ = MonotonicNs();
   }
   SetState(NtripState::kStreaming, "connected to " + opt_.mountpoint);
 
@@ -567,7 +564,7 @@ void NtripClient::Session() {
     {
       std::lock_guard lk(mu_);
       status_.bytes += data.size();
-      last_data_ns_ = NowNs();
+      last_data_ns_ = MonotonicNs();
     }
     backoff_ms_ = opt_.backoff_min_ms;
     if (!chunked) {
@@ -582,11 +579,11 @@ void NtripClient::Session() {
     return;
   }
 
-  int64_t next_gga = NowNs() + int64_t{opt_.gga_interval_ms} * 1'000'000;
+  int64_t next_gga = MonotonicNs() + MsToNs(opt_.gga_interval_ms);
   while (!StopRequested()) {
-    const int64_t now = NowNs();
+    const int64_t now = MonotonicNs();
     if (opt_.send_gga && now >= next_gga) {
-      next_gga = now + int64_t{opt_.gga_interval_ms} * 1'000'000;
+      next_gga = now + MsToNs(opt_.gga_interval_ms);
       {
         std::lock_guard lk(mu_);
         pos = position_;
@@ -601,7 +598,7 @@ void NtripClient::Session() {
       std::lock_guard lk(mu_);
       last = last_data_ns_;
     }
-    if (now - last > int64_t{opt_.stall_after_ms} * 1'000'000) {
+    if (now - last > MsToNs(opt_.stall_after_ms)) {
       const std::string why =
           "no corrections for " + std::to_string(opt_.stall_after_ms) + " ms";
       SetState(NtripState::kStalled, why);
@@ -642,8 +639,8 @@ std::optional<std::string> NtripClient::FetchSourcetable(
   }
   std::string all;
   std::array<char, 4096> buf{};
-  const int64_t deadline = NowNs() + 10'000'000'000;
-  while (NowNs() < deadline &&
+  const int64_t deadline = MonotonicNs() + 10'000'000'000;
+  while (MonotonicNs() < deadline &&
          all.find("ENDSOURCETABLE") == std::string::npos) {
     pollfd p{sock.Fd(), POLLIN, 0};
     if (::poll(&p, 1, 100) <= 0) {

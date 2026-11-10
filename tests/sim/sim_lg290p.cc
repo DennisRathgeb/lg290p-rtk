@@ -13,6 +13,8 @@
 #include <cstdlib>
 #include <filesystem>
 
+// Relative: the sim tool target has no include path to src/.
+#include "../../src/internal/clock.h"
 #include "lgrtk/framer.h"
 #include "lgrtk/lg290p.h"
 
@@ -20,11 +22,11 @@ namespace lgrtk::test {
 
 namespace {
 
-int64_t NowNs() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-             std::chrono::steady_clock::now().time_since_epoch())
-      .count();
-}
+using internal::MonotonicNs;
+using internal::MsToNs;
+
+// How long the simulated receiver stays silent after a reset or restart.
+constexpr int64_t kRebootMs = 300;
 
 speed_t SpeedOf(int baud) {
   switch (baud) {
@@ -209,7 +211,7 @@ void SimLg290p::HandleCommand(const std::string& body) {
       cmd == "PQTMCOLD") {
     writes_.push_back(body);
     ++resets_;
-    silent_until_ns_ = NowNs() + 300'000'000;
+    silent_until_ns_ = MonotonicNs() + MsToNs(kRebootMs);
     return;
   }
   if (rest.starts_with("W,")) {
@@ -252,7 +254,7 @@ void SimLg290p::Loop() {
   StreamFramer framer;
   std::array<uint8_t, 1024> buf{};
   double utc = 10 * 3600.0;
-  int64_t next_epoch = NowNs();
+  int64_t next_epoch = MonotonicNs();
   while (!stop_) {
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
     std::lock_guard lk(mu_);
@@ -278,7 +280,7 @@ void SimLg290p::Loop() {
       }
     }
     const ssize_t n = reading_ ? read(master_, buf.data(), buf.size()) : 0;
-    const bool booting = NowNs() < silent_until_ns_;
+    const bool booting = MonotonicNs() < silent_until_ns_;
     if (n > 0 && !booting && HostBaudMatches()) {
       framer.Feed(std::span(buf.data(), static_cast<size_t>(n)),
                   [&](const Frame& f) {
@@ -290,7 +292,7 @@ void SimLg290p::Loop() {
                     }
                   });
     }
-    const int64_t now = NowNs();
+    const int64_t now = MonotonicNs();
     if (now < next_epoch) {
       continue;
     }
@@ -298,7 +300,7 @@ void SimLg290p::Loop() {
     if (interval <= 0) {
       interval = 100;
     }
-    next_epoch += int64_t{interval} * 1'000'000;
+    next_epoch += MsToNs(interval);
     if (next_epoch < now) {
       next_epoch = now;
     }
