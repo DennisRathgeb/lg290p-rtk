@@ -24,6 +24,7 @@ add_library(lgrtk
   src/serial.cc
   src/receiver.cc
   src/local_frame.cc
+  src/ntrip.cc
 )
 add_library(lgrtk::lgrtk ALIAS lgrtk)
 target_include_directories(lgrtk PUBLIC
