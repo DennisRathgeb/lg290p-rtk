@@ -223,6 +223,41 @@ TEST(NtripTest, StopIsFastWhileConnecting) {
   EXPECT_LT(std::chrono::steady_clock::now() - t0, 1200ms);
 }
 
+TEST(NtripTest, FetchSourcetableV2Chunked) {
+  FakeCaster caster(FakeCaster::Mode::kSourcetable);
+  std::string err;
+  const auto table =
+      NtripClient::FetchSourcetable("127.0.0.1", caster.Port(), 2, err);
+  ASSERT_TRUE(table) << err;
+  EXPECT_EQ(*table, FakeCaster::Sourcetable());
+  const auto req = caster.Requests().at(0);
+  EXPECT_NE(req.find("GET / HTTP/1.1"), std::string::npos) << req;
+  EXPECT_NE(req.find("Ntrip-Version: Ntrip/2.0"), std::string::npos) << req;
+}
+
+TEST(NtripTest, FetchSourcetableV1) {
+  FakeCaster caster(FakeCaster::Mode::kSourcetable);
+  std::string err;
+  const auto table =
+      NtripClient::FetchSourcetable("127.0.0.1", caster.Port(), 1, err);
+  ASSERT_TRUE(table) << err;
+  EXPECT_EQ(*table, FakeCaster::Sourcetable());
+  EXPECT_NE(caster.Requests().at(0).find("GET / HTTP/1.0"), std::string::npos);
+}
+
+TEST(NtripTest, UnknownMountpointReportsSourcetable) {
+  FakeCaster caster(FakeCaster::Mode::kSourcetable);
+  VecSink sink;
+  NtripClient c(Opts(caster, 1), sink);
+  ASSERT_TRUE(c.Start());
+  ASSERT_TRUE(WaitFor(
+      [&] {
+        return c.Status().last_error.find("not found") != std::string::npos;
+      },
+      2s));
+  EXPECT_NE(c.Status().last_error.find("NALPS"), std::string::npos);
+}
+
 TEST(NtripTest, BuildGgaFormat) {
   const std::string g = BuildGga(SomeFix());
   EXPECT_EQ(g.rfind("$GPGGA,100000.00,4637.8000000,N,00846.8000000,E,1,20,0.8,"
