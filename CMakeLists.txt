@@ -68,6 +68,7 @@ if(LGRTK_BUILD_DAEMON)
     src/daemon/raw_tap.cc
     src/daemon/chrony.cc
     src/daemon/sd_notify.cc
+    src/daemon/control.cc
   )
   target_include_directories(lgrtkd_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(lgrtkd_core
@@ -81,6 +82,10 @@ if(LGRTK_BUILD_APPS)
   target_link_libraries(lgrtk_cli PRIVATE lgrtk lgrtk_warnings)
   if(LGRTK_HAVE_PROJ)
     target_link_libraries(lgrtk_cli PRIVATE lgrtk::projection)
+  endif()
+  if(LGRTK_BUILD_DAEMON)
+    target_link_libraries(lgrtk_cli PRIVATE lgrtkd_core)
+    target_compile_definitions(lgrtk_cli PRIVATE LGRTK_HAVE_CTL=1)
   endif()
 endif()
 
