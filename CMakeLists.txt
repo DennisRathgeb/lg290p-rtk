@@ -69,11 +69,14 @@ if(LGRTK_BUILD_DAEMON)
     src/daemon/chrony.cc
     src/daemon/sd_notify.cc
     src/daemon/control.cc
+    src/daemon/daemon.cc
   )
   target_include_directories(lgrtkd_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(lgrtkd_core
     PUBLIC lgrtk nlohmann_json::nlohmann_json
     PRIVATE tomlplusplus::tomlplusplus $<BUILD_INTERFACE:lgrtk_warnings>)
+  add_executable(lgrtkd apps/lgrtkd/main.cc)
+  target_link_libraries(lgrtkd PRIVATE lgrtkd_core lgrtk_warnings)
 endif()
 
 if(LGRTK_BUILD_APPS)

@@ -15,6 +15,7 @@ if(NOT nlohmann_json_FOUND)
   message(STATUS "lgrtk: fetching nlohmann/json 3.11.3")
   FetchContent_Declare(nlohmann_json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d)
   FetchContent_MakeAvailable(nlohmann_json)
   _lgrtk_system_headers(nlohmann_json)
@@ -25,6 +26,7 @@ if(NOT tomlplusplus_FOUND)
   message(STATUS "lgrtk: fetching toml++ 3.4.0")
   FetchContent_Declare(tomlplusplus
     URL https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.4.0.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     URL_HASH SHA256=8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155)
   FetchContent_MakeAvailable(tomlplusplus)
   _lgrtk_system_headers(tomlplusplus_tomlplusplus)

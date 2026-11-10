@@ -36,6 +36,12 @@ if(LGRTK_BUILD_APPS)
   add_test(NAME CliTest.EndToEnd
            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cli_test.sh $<TARGET_FILE:lgrtk_cli> $<TARGET_FILE:sim_lg290p_tool>)
   set_tests_properties(CliTest.EndToEnd PROPERTIES TIMEOUT 120)
+  if(LGRTK_BUILD_DAEMON)
+    add_test(NAME DaemonTest.EndToEnd
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/daemon_test.sh $<TARGET_FILE:lgrtkd>
+                     $<TARGET_FILE:sim_lg290p_tool> $<TARGET_FILE:lgrtk_cli>)
+    set_tests_properties(DaemonTest.EndToEnd PROPERTIES TIMEOUT 120)
+  endif()
 endif()
 
 if(LGRTK_BUILD_DAEMON)
