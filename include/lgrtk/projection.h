@@ -32,7 +32,9 @@ class Projection {
   static std::optional<Projection> Create(std::string_view from_crs,
                                           std::string_view to_crs,
                                           std::string& err);
+  /// Moves the PROJ context and pipeline.
   Projection(Projection&&) noexcept;
+  /// Moves the PROJ context and pipeline.
   Projection& operator=(Projection&&) noexcept;
   ~Projection();
 

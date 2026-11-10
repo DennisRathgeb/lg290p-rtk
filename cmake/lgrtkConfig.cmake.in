@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+if(@LGRTK_HAVE_PROJ@)
+  find_dependency(PROJ CONFIG)
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/lgrtkTargets.cmake")
+check_required_components(lgrtk)

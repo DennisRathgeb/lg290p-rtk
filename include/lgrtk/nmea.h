@@ -89,8 +89,10 @@ struct Gst {
 
 /// GSA: DOPs and satellites used, one sentence per constellation.
 struct Gsa {
-  double pdop, hdop, vdop;  ///< dimensionless
-  uint8_t fix_mode;         ///< 1 none, 2 2-D, 3 3-D
+  double pdop;         ///< position DOP
+  double hdop;         ///< horizontal DOP
+  double vdop;         ///< vertical DOP
+  uint8_t fix_mode;    ///< 1 none, 2 2-D, 3 3-D
   uint8_t system_id;   ///< 1 GPS, 2 GLONASS, 3 Galileo, 4 BDS, 5 QZSS, 6 NavIC
   uint8_t used_count;  ///< satellites listed as used
 };
@@ -128,7 +130,11 @@ struct Zda {
 
 /// PQTMEPE (version 2): estimated position error, metres.
 struct Epe {
-  double north_m, east_m, down_m, h2d_m, h3d_m;  ///< metres
+  double north_m;  ///< north error estimate
+  double east_m;   ///< east error estimate
+  double down_m;   ///< down error estimate
+  double h2d_m;    ///< horizontal error estimate
+  double h3d_m;    ///< 3-D error estimate
 };
 
 /// PQTMVERNO: firmware version. Views point into the parsed line.
@@ -144,8 +150,10 @@ struct SvinStatus {
   uint8_t valid;                 ///< 0 invalid/off, 1 in progress, 2 valid
   uint32_t observations;         ///< positions averaged so far
   uint32_t configured_duration;  ///< configured minimum positions
-  double mean_x_m, mean_y_m, mean_z_m;  ///< ECEF mean position
-  double mean_acc_m;                    ///< mean position accuracy
+  double mean_x_m;               ///< ECEF X of the mean position
+  double mean_y_m;               ///< ECEF Y of the mean position
+  double mean_z_m;               ///< ECEF Z of the mean position
+  double mean_acc_m;             ///< mean position accuracy
 };
 
 /// Reply of the receiver to a `$PQTM` command: "$PQTMxxx,OK[,values]" or
@@ -165,15 +173,28 @@ struct OwnedReply {
   std::vector<std::string> values;  ///< fields after OK
 };
 
+/// Parses GGA; nullopt for another type, a bad checksum or malformed fields.
 [[nodiscard]] std::optional<Gga> ParseGga(std::string_view line) noexcept;
+/// Parses RMC; nullopt for another type, a bad checksum or malformed fields.
 [[nodiscard]] std::optional<Rmc> ParseRmc(std::string_view line) noexcept;
+/// Parses GST; nullopt for another type, a bad checksum or malformed fields.
 [[nodiscard]] std::optional<Gst> ParseGst(std::string_view line) noexcept;
+/// Parses GSA; nullopt for another type, a bad checksum or malformed fields.
 [[nodiscard]] std::optional<Gsa> ParseGsa(std::string_view line) noexcept;
+/// Parses GSV; nullopt for another type, a bad checksum or malformed fields.
 [[nodiscard]] std::optional<Gsv> ParseGsv(std::string_view line) noexcept;
+/// Parses VTG; nullopt for another type, a bad checksum or malformed fields.
 [[nodiscard]] std::optional<Vtg> ParseVtg(std::string_view line) noexcept;
+/// Parses ZDA; nullopt for another type, a bad checksum or malformed fields.
 [[nodiscard]] std::optional<Zda> ParseZda(std::string_view line) noexcept;
+/// Parses `$PQTMEPE` (version 2); nullopt for another type, a bad checksum or
+/// malformed fields.
 [[nodiscard]] std::optional<Epe> ParseEpe(std::string_view line) noexcept;
+/// Parses `$PQTMVERNO` (views into `line`); nullopt for another type, a bad
+/// checksum or malformed fields.
 [[nodiscard]] std::optional<Verno> ParseVerno(std::string_view line) noexcept;
+/// Parses `$PQTMSVINSTATUS`; nullopt for another type, a bad checksum or
+/// malformed fields.
 [[nodiscard]] std::optional<SvinStatus> ParseSvinStatus(
     std::string_view line) noexcept;
 /// Parses a command reply; `fields` is scratch space the reply's values view.

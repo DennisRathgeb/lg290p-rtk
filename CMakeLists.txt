@@ -30,7 +30,7 @@ add_library(lgrtk::lgrtk ALIAS lgrtk)
 target_include_directories(lgrtk PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-target_link_libraries(lgrtk PUBLIC Threads::Threads PRIVATE lgrtk_warnings)
+target_link_libraries(lgrtk PUBLIC Threads::Threads PRIVATE $<BUILD_INTERFACE:lgrtk_warnings>)
 
 # Optional PROJ-based projection component.
 set(LGRTK_HAVE_PROJ OFF)
@@ -47,7 +47,7 @@ if(LGRTK_WITH_PROJ)
     add_library(lgrtk_projection src/projection.cc)
     add_library(lgrtk::projection ALIAS lgrtk_projection)
     target_link_libraries(lgrtk_projection PUBLIC lgrtk
-      PRIVATE $<IF:$<TARGET_EXISTS:PROJ::proj>,PROJ::proj,PkgConfig::PROJPC> lgrtk_warnings)
+      PRIVATE $<IF:$<TARGET_EXISTS:PROJ::proj>,PROJ::proj,PkgConfig::PROJPC> $<BUILD_INTERFACE:lgrtk_warnings>)
     target_compile_definitions(lgrtk_projection PUBLIC LGRTK_HAVE_PROJ=1)
     message(STATUS "lgrtk: PROJ found, building lgrtk::projection")
   else()
@@ -62,6 +62,43 @@ if(LGRTK_BUILD_APPS)
   if(LGRTK_HAVE_PROJ)
     target_link_libraries(lgrtk_cli PRIVATE lgrtk::projection)
   endif()
+endif()
+
+if(LGRTK_BUILD_EXAMPLES)
+  add_executable(example_print_fixes examples/print_fixes.cc)
+  target_link_libraries(example_print_fixes PRIVATE lgrtk lgrtk_warnings)
+  if(LGRTK_HAVE_PROJ)
+    add_executable(example_ntrip_rover examples/ntrip_rover.cc)
+    target_link_libraries(example_ntrip_rover PRIVATE lgrtk::projection lgrtk_warnings)
+  endif()
+endif()
+
+# ---- install: library, headers, CMake package, pkg-config, CLI ----
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+set_target_properties(lgrtk PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
+set(_lgrtk_targets lgrtk)
+if(LGRTK_HAVE_PROJ)
+  set_target_properties(lgrtk_projection PROPERTIES EXPORT_NAME projection
+    VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
+  list(APPEND _lgrtk_targets lgrtk_projection)
+endif()
+install(TARGETS ${_lgrtk_targets} EXPORT lgrtkTargets
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY include/lgrtk DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(EXPORT lgrtkTargets NAMESPACE lgrtk:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/lgrtk)
+configure_package_config_file(cmake/lgrtkConfig.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/lgrtkConfig.cmake
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/lgrtk)
+write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/lgrtkConfigVersion.cmake
+  COMPATIBILITY SameMinorVersion)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/lgrtkConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/lgrtkConfigVersion.cmake
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/lgrtk)
+configure_file(cmake/lgrtk.pc.in ${CMAKE_CURRENT_BINARY_DIR}/lgrtk.pc @ONLY)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/lgrtk.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+if(LGRTK_BUILD_APPS)
+  install(TARGETS lgrtk_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if(LGRTK_BUILD_TESTS)

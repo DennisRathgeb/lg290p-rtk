@@ -110,7 +110,9 @@ class RawRecorder {
   /// Opens (truncates) `path`.
   static std::optional<RawRecorder> Open(const std::string& path,
                                          std::string& err);
+  /// Moves the open file.
   RawRecorder(RawRecorder&& o) noexcept;
+  /// Closes this file and takes over `o`'s.
   RawRecorder& operator=(RawRecorder&& o) noexcept;
   RawRecorder(const RawRecorder&) = delete;
   RawRecorder& operator=(const RawRecorder&) = delete;
@@ -131,6 +133,7 @@ class RawRecorder {
 /// (or the receiver). All other methods are thread-safe.
 class Lg290pReceiver final : public CorrectionSink {
  public:
+  /// Creates the driver; nothing is opened until Start().
   explicit Lg290pReceiver(ReceiverOptions options);
   ~Lg290pReceiver() override;
   Lg290pReceiver(const Lg290pReceiver&) = delete;
@@ -157,6 +160,7 @@ class Lg290pReceiver final : public CorrectionSink {
   /// Stops the thread and closes the port; joins within ~1 s. Idempotent.
   void Stop();
 
+  /// State, counters, firmware and the age of the latest fix.
   [[nodiscard]] ReceiverStatus Status() const;
   /// The newest fix, if any (check Status().last_fix_age_ns for freshness).
   [[nodiscard]] std::optional<Fix> LatestFix() const;

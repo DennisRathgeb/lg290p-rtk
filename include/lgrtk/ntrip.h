@@ -89,6 +89,7 @@ class NtripClient {
   bool Start();
   /// Stops and joins within ~1 s. Idempotent.
   void Stop();
+  /// State, counters and the age of the last correction data.
   [[nodiscard]] NtripStatus Status() const;
 
   /// Downloads a caster's sourcetable (list of mountpoints).

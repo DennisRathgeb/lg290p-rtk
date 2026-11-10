@@ -47,11 +47,18 @@ struct MessageRate {
   std::string name;  ///< "GGA", "GST", "PQTMEPE", "RTCM3-107X", ...
   int rate = 0;      ///< 0..255 (fixes per output)
   int version = 0;   ///< PQTM message version / RTCM offset; 0 = omit
+  /// Field-wise equality.
   bool operator==(const MessageRate&) const = default;
 };
 /// NMEA decimal places (PQTMCFGNMEADP).
 struct NmeaDecimals {
-  int utc = 3, pos = 8, alt = 3, dop = 2, spd = 3, cog = 2;  ///< digits
+  int utc = 3;  ///< UTC time decimals
+  int pos = 8;  ///< latitude/longitude minute decimals (8 = 0.02 mm)
+  int alt = 3;  ///< altitude decimals
+  int dop = 2;  ///< DOP decimals
+  int spd = 3;  ///< speed decimals
+  int cog = 2;  ///< course decimals
+  /// Field-wise equality.
   bool operator==(const NmeaDecimals&) const = default;
 };
 /// RTK engine settings (PQTMCFGRTK).
@@ -59,12 +66,18 @@ struct RtkSettings {
   int diff_mode = 1;    ///< 0 off, 1 auto (RTK), 2 RTD only
   int rel_mode = 1;     ///< 1 absolute, 2 relative
   int timeout_s = 120;  ///< max differential age for an RTK fix, 1..600
+  /// Field-wise equality.
   bool operator==(const RtkSettings&) const = default;
 };
 /// Enabled constellations (PQTMCFGCNST).
 struct Constellations {
-  bool gps = true, glonass = true, galileo = true, beidou = true, qzss = true,
-       navic = true;  ///< on/off
+  bool gps = true;      ///< GPS
+  bool glonass = true;  ///< GLONASS
+  bool galileo = true;  ///< Galileo
+  bool beidou = true;   ///< BeiDou
+  bool qzss = true;     ///< QZSS
+  bool navic = true;    ///< NavIC
+  /// Field-wise equality.
   bool operator==(const Constellations&) const = default;
 };
 /// PPS output (PQTMCFGPPS, index 1).
@@ -73,6 +86,7 @@ struct PpsSettings {
   int duration_ms = 100;  ///< pulse width 0..900
   int mode = 1;           ///< 1 always, 2 only with a fix
   int polarity = 1;       ///< 1 positive
+  /// Field-wise equality.
   bool operator==(const PpsSettings&) const = default;
 };
 
@@ -93,24 +107,43 @@ struct ReceiverConfig {
 /// EPE every fix, GLL/VTG off, RTK auto with 30 s max differential age.
 [[nodiscard]] ReceiverConfig DefaultRoverConfig();
 
+/// `$PQTMVERNO`: firmware version string, build date and time.
 [[nodiscard]] Command QueryVersion();
+/// `$PQTMUNIQID`: the module's unique id.
 [[nodiscard]] Command QueryUniqueId();
+/// `$PQTMCFGFIXRATE,W`: fix interval 50..1000 ms (needs save + reset).
 [[nodiscard]] std::optional<Command> SetFixRate(int interval_ms);
+/// `$PQTMCFGFIXRATE,R`.
 [[nodiscard]] Command GetFixRate();
+/// `$PQTMCFGMSGRATE,W`: output `msg` once every `rate` fixes (0 = off);
+/// `version` for PQTM messages (e.g. PQTMEPE 2) or the RTCM offset.
 [[nodiscard]] Command SetMessageRate(std::string_view msg, int rate,
                                      int version = 0);
+/// `$PQTMCFGMSGRATE,R` for one message.
 [[nodiscard]] Command GetMessageRate(std::string_view msg, int version = 0);
+/// `$PQTMCFGNMEADP,W`: NMEA decimal places.
 [[nodiscard]] Command SetNmeaDecimals(const NmeaDecimals& d);
+/// `$PQTMCFGNMEADP,R`.
 [[nodiscard]] Command GetNmeaDecimals();
+/// `$PQTMCFGRTK,W`: RTK mode and maximum differential age.
 [[nodiscard]] std::optional<Command> SetRtk(const RtkSettings& s);
+/// `$PQTMCFGRTK,R`.
 [[nodiscard]] Command GetRtk();
+/// `$PQTMCFGCNST,W` (needs save + reset).
 [[nodiscard]] Command SetConstellations(const Constellations& c);
+/// `$PQTMCFGCNST,R`.
 [[nodiscard]] Command GetConstellations();
+/// `$PQTMCFGELETHD,W`: elevation mask 0..90 deg.
 [[nodiscard]] std::optional<Command> SetElevationMask(double deg);
+/// `$PQTMCFGELETHD,R`.
 [[nodiscard]] Command GetElevationMask();
+/// `$PQTMCFGCNRTHD,W`: C/N0 mask 0..99 dBHz.
 [[nodiscard]] std::optional<Command> SetCnrMask(double dbhz);
+/// `$PQTMCFGCNRTHD,R`.
 [[nodiscard]] Command GetCnrMask();
+/// `$PQTMCFGRCVRMODE,W`: rover or base (needs save + reset).
 [[nodiscard]] Command SetReceiverMode(Mode m);
+/// `$PQTMCFGRCVRMODE,R`.
 [[nodiscard]] Command GetReceiverMode();
 /// Base survey-in: average at least `seconds` positions; stop early once the
 /// 3-D accuracy is below `accuracy_m` (0 = no limit).
@@ -119,13 +152,19 @@ struct ReceiverConfig {
 [[nodiscard]] Command FixedBase(double x_m, double y_m, double z_m);
 /// Survey-in off.
 [[nodiscard]] Command DisableSurvey();
+/// `$PQTMCFGSVIN,R`.
 [[nodiscard]] Command GetSurvey();
+/// `$PQTMCFGPPS,W` for PPS index 1.
 [[nodiscard]] std::optional<Command> SetPps(const PpsSettings& p);
+/// `$PQTMCFGPPS,R,1`.
 [[nodiscard]] Command GetPps();
 /// UART `port` (1..3) baud; the host must reopen at the new baud afterwards.
 [[nodiscard]] std::optional<Command> SetUartBaud(int port, int baud);
+/// `$PQTMSAVEPAR`: save the configuration to flash.
 [[nodiscard]] Command SaveParams();
+/// `$PQTMSRR`: reboot (no reply).
 [[nodiscard]] Command SoftwareReset();
+/// `$PQTMHOT` / `$PQTMWARM` / `$PQTMCOLD` (no reply).
 [[nodiscard]] Command Restart(Start s);
 /// Factory defaults (takes effect after a reset).
 [[nodiscard]] Command RestoreDefaults();

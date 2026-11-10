@@ -24,7 +24,9 @@ class SerialPort {
   /// True for the speeds the LG290P supports (9600 … 921600).
   static bool SupportedBaud(int baud) noexcept;
 
+  /// Moves the descriptor.
   SerialPort(SerialPort&& o) noexcept;
+  /// Closes this port and takes over `o`'s descriptor.
   SerialPort& operator=(SerialPort&& o) noexcept;
   SerialPort(const SerialPort&) = delete;
   SerialPort& operator=(const SerialPort&) = delete;
@@ -40,7 +42,9 @@ class SerialPort {
   bool SetBaud(int baud) noexcept;
   /// Discards pending input and output.
   void Flush() noexcept;
+  /// The file descriptor (for poll loops).
   [[nodiscard]] int Fd() const noexcept { return fd_; }
+  /// Current line speed.
   [[nodiscard]] int Baud() const noexcept { return baud_; }
 
  private:

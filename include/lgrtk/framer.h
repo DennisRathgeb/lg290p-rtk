@@ -81,6 +81,7 @@ class StreamFramer {
     pos_ = 0;
   }
 
+  /// Frame statistics since construction.
   [[nodiscard]] const Counters& Stats() const noexcept { return counters_; }
 
  private:
