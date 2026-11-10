@@ -11,7 +11,7 @@ namespace lgrtk::lg290p {
 
 namespace {
 
-Command Make(std::string body, std::string reply_to, bool is_write,
+Command Make(const std::string& body, std::string reply_to, bool is_write,
              bool needs_reset = false, std::string match_value = {}) {
   Command c;
   c.text = BuildCommand(body);

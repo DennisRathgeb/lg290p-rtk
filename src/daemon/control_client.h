@@ -4,9 +4,10 @@
 #ifndef LGRTK_SRC_DAEMON_CONTROL_CLIENT_H_
 #define LGRTK_SRC_DAEMON_CONTROL_CLIENT_H_
 
-#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
+
+#include <nlohmann/json.hpp>
 
 #include "daemon/control_protocol.h"
 

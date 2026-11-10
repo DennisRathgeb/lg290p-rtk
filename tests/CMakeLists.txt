@@ -34,7 +34,7 @@ gtest_discover_tests(lgrtk_tests DISCOVERY_TIMEOUT 30)
 
 if(LGRTK_BUILD_APPS)
   add_executable(sim_lg290p_tool sim/sim_tool.cc sim/sim_lg290p.cc)
-  target_include_directories(sim_lg290p_tool PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_include_directories(sim_lg290p_tool PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src)
   target_link_libraries(sim_lg290p_tool PRIVATE util lgrtk::lgrtk)
   add_test(NAME CliTest.EndToEnd
            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cli_test.sh $<TARGET_FILE:lgrtk_cli> $<TARGET_FILE:sim_lg290p_tool>)

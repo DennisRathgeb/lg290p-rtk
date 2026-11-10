@@ -1,13 +1,13 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "daemon/gpsd_server.h"
 
-#include <gtest/gtest.h>
-
 #include <atomic>
 #include <memory>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <thread>
+
+#include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 
 #include "daemon/event_loop.h"
 #include "daemon/net_util.h"
@@ -56,7 +56,7 @@ class GpsdServerTest : public ::testing::Test {
     lt_.Sync([&] { server_->PublishFix(f); });
   }
   // Connects and consumes the VERSION greeting.
-  void Connect(LineClient* c) {
+  void Connect(LineClient* c) const {
     ASSERT_TRUE(c->ConnectTcp(port_));
     auto v = c->ReadLine();
     ASSERT_TRUE(v);
@@ -248,7 +248,7 @@ TEST_F(GpsdServerTest, ClientCountFollowsDisconnects) {
 
 class GpsdServerSmallCapTest : public GpsdServerTest {
  protected:
-  GpsdServerSmallCapTest() { cap_ = 16 * 1024; }
+  GpsdServerSmallCapTest() { cap_ = size_t{16} * 1024; }
 };
 
 TEST_F(GpsdServerSmallCapTest, SlowClientIsDropped) {

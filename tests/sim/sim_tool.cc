@@ -7,12 +7,18 @@
 #include <iostream>
 #include <string>
 
+#include "internal/text.h"
 #include "sim/sim_lg290p.h"
 
 int main(int argc, char** argv) {
-  const int baud = argc > 1 ? std::atoi(argv[1]) : 460800;
+  int baud = 460800;
+  if (argc > 1 &&
+      !lgrtk::internal::ParseNumber(std::string_view(argv[1]), baud)) {
+    std::cerr << "usage: sim_lg290p_tool [BAUD]\n";
+    return 2;
+  }
   lgrtk::test::SimLg290p sim(baud);
-  std::cout << sim.Path() << std::endl;
+  std::cout << sim.Path() << '\n' << std::flush;
   std::string line;
   while (std::getline(std::cin, line)) {
     if (line == "unplug") {

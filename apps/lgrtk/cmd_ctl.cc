@@ -1,8 +1,9 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 // lgrtk ctl: one request to a running lgrtkd's control socket.
 #include <iostream>
-#include <nlohmann/json.hpp>
 #include <string>
+
+#include <nlohmann/json.hpp>
 
 #include "apps/lgrtk/args.h"
 #include "apps/lgrtk/commands.h"

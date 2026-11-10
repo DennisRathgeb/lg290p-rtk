@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+
 #include <nlohmann/json.hpp>
 
 #include "daemon/gpsd_json.h"

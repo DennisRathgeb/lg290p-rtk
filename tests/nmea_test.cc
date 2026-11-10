@@ -1,9 +1,9 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/nmea.h"
 
-#include <gtest/gtest.h>
-
 #include <array>
+
+#include <gtest/gtest.h>
 
 #include "test_util.h"
 

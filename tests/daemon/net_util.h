@@ -61,7 +61,10 @@ class LineClient {
     return connect(fd_.Get(), a.Get(), a.len) == 0;
   }
   void Write(const std::string& s) const {
-    (void)!send(fd_.Get(), s.data(), s.size(), MSG_NOSIGNAL);
+    // Best effort: a short write shows up as a missing reply.
+    if (::send(fd_.Get(), s.data(), s.size(), MSG_NOSIGNAL) < 0) {
+      return;
+    }
   }
   /// Next line without "\r\n"; nullopt on timeout or EOF.
   std::optional<std::string> ReadLine(int timeout_ms = 2000) {

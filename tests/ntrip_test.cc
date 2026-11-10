@@ -1,12 +1,12 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/ntrip.h"
 
-#include <gtest/gtest.h>
-
 #include <chrono>
 #include <mutex>
 #include <thread>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "sim/fake_caster.h"
 #include "test_util.h"
@@ -22,12 +22,12 @@ struct VecSink : CorrectionSink {
   std::mutex mu;
   std::vector<std::vector<uint8_t>> frames;
   bool Inject(std::span<const uint8_t> f) override {
-    std::lock_guard lk(mu);
+    std::scoped_lock lk(mu);
     frames.emplace_back(f.begin(), f.end());
     return true;
   }
   size_t Count() {
-    std::lock_guard lk(mu);
+    std::scoped_lock lk(mu);
     return frames.size();
   }
 };
@@ -69,7 +69,7 @@ TEST(NtripTest, V2ChunkedStreamsToSink) {
   ASSERT_TRUE(WaitFor([&] { return sink.Count() >= 3; }, 2s));
   EXPECT_EQ(c.Status().state, NtripState::kStreaming);
   {
-    std::lock_guard lk(sink.mu);
+    std::scoped_lock lk(sink.mu);
     for (const auto& f : sink.frames) {
       EXPECT_EQ(f, FakeCaster::Frame());
     }
@@ -168,13 +168,13 @@ TEST(NtripTest, StalledWhenSilent) {
   std::vector<NtripState> seen;
   NtripClient c(Opts(caster), sink);
   c.OnStatus([&](NtripState, NtripState to, const std::string&) {
-    std::lock_guard lk(mu);
+    std::scoped_lock lk(mu);
     seen.push_back(to);
   });
   ASSERT_TRUE(c.Start());
   ASSERT_TRUE(WaitFor(
       [&] {
-        std::lock_guard lk(mu);
+        std::scoped_lock lk(mu);
         return std::find(seen.begin(), seen.end(), NtripState::kStalled) !=
                seen.end();
       },
@@ -190,7 +190,7 @@ TEST(NtripTest, PasswordNotInStatusOrErrors) {
   std::string reasons;
   NtripClient c(Opts(caster), sink);
   c.OnStatus([&](NtripState, NtripState, const std::string& r) {
-    std::lock_guard lk(mu);
+    std::scoped_lock lk(mu);
     reasons += r;
   });
   ASSERT_TRUE(c.Start());

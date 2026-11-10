@@ -1,13 +1,14 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "daemon/raw_tap.h"
 
-#include <gtest/gtest.h>
 #include <poll.h>
 #include <sys/socket.h>
 
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "daemon/net_util.h"
 #include "test_util.h"

@@ -1,10 +1,10 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/local_frame.h"
 
-#include <gtest/gtest.h>
-
 #include <cmath>
 #include <numbers>
+
+#include <gtest/gtest.h>
 
 namespace lgrtk {
 namespace {

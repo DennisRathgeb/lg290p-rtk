@@ -1,10 +1,10 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "daemon/sky.h"
 
-#include <gtest/gtest.h>
-
-#include <nlohmann/json.hpp>
 #include <string>
+
+#include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 
 #include "test_util.h"
 

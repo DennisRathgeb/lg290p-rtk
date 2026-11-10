@@ -2,10 +2,10 @@
 // Tests of the HTTP chunked decoder in src/internal/net.h.
 #include "internal/net.h"
 
-#include <gtest/gtest.h>
-
 #include <string>
 #include <string_view>
+
+#include <gtest/gtest.h>
 
 namespace lgrtk::internal {
 namespace {

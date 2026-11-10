@@ -1,7 +1,6 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "daemon/chrony.h"
 
-#include <gtest/gtest.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -9,6 +8,8 @@
 
 #include <cstring>
 #include <string>
+
+#include <gtest/gtest.h>
 
 #include "daemon/gpsd_json.h"
 

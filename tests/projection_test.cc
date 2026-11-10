@@ -1,10 +1,10 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/projection.h"
 
-#include <gtest/gtest.h>
-
 #include <chrono>
 #include <string>
+
+#include <gtest/gtest.h>
 
 namespace lgrtk {
 namespace {

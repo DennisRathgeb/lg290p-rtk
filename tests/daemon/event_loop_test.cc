@@ -1,7 +1,6 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "daemon/event_loop.h"
 
-#include <gtest/gtest.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -10,6 +9,8 @@
 #include <thread>
 #include <utility>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "daemon/net_util.h"
 #include "internal/unique_fd.h"
@@ -60,6 +61,7 @@ TEST(EventLoopTest, PostFromOtherThread) {
   ASSERT_TRUE(lt.Ok());
   std::atomic<int> n{0};
   std::vector<std::thread> ts;
+  ts.reserve(4);
   for (int i = 0; i < 4; ++i) {
     ts.emplace_back([&] {
       for (int k = 0; k < 100; ++k) {

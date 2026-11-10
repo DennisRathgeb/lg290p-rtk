@@ -1,11 +1,12 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "daemon/control.h"
 
-#include <gtest/gtest.h>
 #include <unistd.h>
 
 #include <memory>
 #include <string>
+
+#include <gtest/gtest.h>
 
 #include "daemon/control_client.h"
 #include "daemon/net_util.h"

@@ -1,14 +1,15 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "daemon/daemon.h"
 
-#include <gtest/gtest.h>
 #include <poll.h>
-#include <stdlib.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <cstdlib>
 #include <string>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "internal/unique_fd.h"
 #include "internal/unix_socket.h"

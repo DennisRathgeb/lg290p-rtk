@@ -1,15 +1,16 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "daemon/sd_notify.h"
 
-#include <gtest/gtest.h>
 #include <poll.h>
-#include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <cstdlib>
 #include <cstring>
 #include <string>
+
+#include <gtest/gtest.h>
 
 namespace lgrtk::daemon {
 namespace {

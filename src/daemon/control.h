@@ -5,9 +5,10 @@
 #define LGRTK_SRC_DAEMON_CONTROL_H_
 
 #include <functional>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <string_view>
+
+#include <nlohmann/json.hpp>
 
 #include "daemon/control_protocol.h"
 #include "daemon/event_loop.h"

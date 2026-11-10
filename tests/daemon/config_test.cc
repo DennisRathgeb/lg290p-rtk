@@ -1,13 +1,14 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "daemon/config.h"
 
-#include <gtest/gtest.h>
-#include <stdlib.h>
 #include <unistd.h>
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
+
+#include <gtest/gtest.h>
 
 namespace lgrtk::daemon {
 namespace {

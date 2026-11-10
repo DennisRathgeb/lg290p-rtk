@@ -1,8 +1,6 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/receiver.h"
 
-#include <gtest/gtest.h>
-
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -12,6 +10,8 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "sim/sim_lg290p.h"
 #include "test_util.h"
@@ -30,12 +30,12 @@ struct Observer {
 
   void Attach(Lg290pReceiver& r) {
     r.OnStatus([this](const StatusEvent& e) {
-      std::lock_guard lk(mu);
+      std::scoped_lock lk(mu);
       events.push_back(e);
       cv.notify_all();
     });
     r.OnFix([this](const Fix& f) {
-      std::lock_guard lk(mu);
+      std::scoped_lock lk(mu);
       fixes.push_back(f);
       cv.notify_all();
     });
@@ -49,7 +49,7 @@ struct Observer {
     return cv.wait_for(lk, t, [&] { return fixes.size() >= n; });
   }
   size_t FixCount() {
-    std::lock_guard lk(mu);
+    std::scoped_lock lk(mu);
     return fixes.size();
   }
 };
@@ -95,6 +95,7 @@ TEST(ReceiverTest, PassesThroughEveryStateInOrder) {
   ASSERT_TRUE(obs.WaitState(rx, State::kStreaming, 5s));
   rx.Stop();
   std::vector<State> seq;
+  seq.reserve(obs.events.size());
   for (const auto& e : obs.events) {
     seq.push_back(e.to);
   }
@@ -277,7 +278,7 @@ TEST(ReceiverTest, StaleBytesAtOpenAreDiscarded) {
   obs.Attach(rx);
   ASSERT_TRUE(rx.Start());
   ASSERT_TRUE(obs.WaitFixes(5, 5s));
-  std::lock_guard lk(obs.mu);
+  std::scoped_lock lk(obs.mu);
   for (const Fix& f : obs.fixes) {
     EXPECT_GE(f.utc_s, 36000.0) << "old epoch published as fresh";
   }
@@ -301,6 +302,7 @@ TEST(ReceiverTest, StopJoinsWhenDeviceStopsReading) {
   ASSERT_TRUE(obs.WaitState(rx, State::kStreaming, 5s));
   sim.SetReading(false);  // the tty output buffer fills up
   std::vector<std::future<std::optional<nmea::OwnedReply>>> futs;
+  futs.reserve(20000);
   for (int i = 0; i < 20000; ++i) {
     futs.push_back(rx.Send(lg290p::Restart(lg290p::Start::kHot)));
   }
@@ -322,7 +324,7 @@ TEST(ReceiverTest, OneHertzIsNotStale) {
   ASSERT_TRUE(rx.Start());
   ASSERT_TRUE(obs.WaitState(rx, State::kStreaming, 5s));
   std::this_thread::sleep_for(3500ms);
-  std::lock_guard lk(obs.mu);
+  std::scoped_lock lk(obs.mu);
   for (const auto& e : obs.events) {
     EXPECT_NE(e.to, State::kStale) << e.reason;
   }

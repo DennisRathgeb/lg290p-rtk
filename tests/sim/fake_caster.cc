@@ -65,12 +65,12 @@ FakeCaster::~FakeCaster() {
 }
 
 std::vector<std::string> FakeCaster::Requests() const {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   return requests_;
 }
 
 std::string FakeCaster::ClientBytes() const {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   return client_bytes_;
 }
 
@@ -116,7 +116,7 @@ void FakeCaster::Serve(int fd) {
   }
   const size_t end = req.find("\r\n\r\n");
   {
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     requests_.push_back(req.substr(0, end));
     if (end != std::string::npos) {
       client_bytes_ += req.substr(end + 4);
@@ -175,7 +175,7 @@ void FakeCaster::Serve(int fd) {
       if (n <= 0) {
         return;
       }
-      std::lock_guard lk(mu_);
+      std::scoped_lock lk(mu_);
       client_bytes_.append(buf, static_cast<size_t>(n));
     }
     if (mode_ == Mode::kSilent) {

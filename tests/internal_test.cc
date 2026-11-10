@@ -1,12 +1,13 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 // Tests of the internal helpers in src/internal/.
 #include <fcntl.h>
-#include <gtest/gtest.h>
 #include <unistd.h>
 
 #include <cstdint>
 #include <string>
 #include <utility>
+
+#include <gtest/gtest.h>
 
 #include "internal/clock.h"
 #include "internal/text.h"

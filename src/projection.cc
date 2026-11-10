@@ -1,10 +1,10 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/projection.h"
 
-#include <proj.h>
-
 #include <cmath>
 #include <string>
+
+#include <proj.h>
 
 namespace lgrtk {
 

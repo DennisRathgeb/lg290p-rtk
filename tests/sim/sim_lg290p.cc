@@ -14,13 +14,21 @@
 #include <filesystem>
 
 // Relative: the sim tool target has no include path to src/.
-#include "../../src/internal/clock.h"
+#include "internal/clock.h"
+#include "internal/text.h"
 #include "lgrtk/framer.h"
 #include "lgrtk/lg290p.h"
 
 namespace lgrtk::test {
 
 namespace {
+
+// Best effort: a short write shows up as a failed test on the reading side.
+void WriteBytes(int fd, const void* data, size_t size) {
+  if (::write(fd, data, size) < 0) {
+    return;
+  }
+}
 
 using internal::MonotonicNs;
 using internal::MsToNs;
@@ -85,7 +93,7 @@ SimLg290p::~SimLg290p() {
 }
 
 void SimLg290p::OpenPty() {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   int m = -1;
   int s = -1;
   if (openpty(&m, &s, nullptr, nullptr, nullptr) != 0) {
@@ -105,7 +113,7 @@ void SimLg290p::OpenPty() {
 }
 
 void SimLg290p::ClosePty() {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   plugged_ = false;
   client_open_ = false;
   if (master_ >= 0) {
@@ -123,37 +131,37 @@ void SimLg290p::Unplug() { ClosePty(); }
 void SimLg290p::Replug() { OpenPty(); }
 
 void SimLg290p::SetFixInterval(int ms) {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   settings_["PQTMCFGFIXRATE"] = std::to_string(ms);
 }
 
 void SimLg290p::NakWrites(const std::string& command) {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   nak_writes_.insert(command);
 }
 
 void SimLg290p::Mute(const std::string& command) {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   mute_.insert(command);
 }
 
 void SimLg290p::Nak(const std::string& command) {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   nak_.insert(command);
 }
 
 std::vector<std::string> SimLg290p::Writes() const {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   return writes_;
 }
 
 void SimLg290p::ClearWrites() {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   writes_.clear();
 }
 
 std::vector<uint8_t> SimLg290p::RtcmReceived() const {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   return rtcm_;
 }
 
@@ -175,10 +183,10 @@ void SimLg290p::Send(const std::string& line) {
   }
   if (!HostBaudMatches()) {
     static const char kNoise[] = "\x8f\x13\xfe\x02\xa5\x7f\xc3\x91";
-    (void)!write(master_, kNoise, sizeof kNoise - 1);
+    WriteBytes(master_, kNoise, sizeof kNoise - 1);
     return;
   }
-  (void)!write(master_, line.data(), line.size());
+  WriteBytes(master_, line.data(), line.size());
 }
 
 void SimLg290p::HandleCommand(const std::string& body) {
@@ -187,14 +195,14 @@ void SimLg290p::HandleCommand(const std::string& body) {
   const std::string cmd = body.substr(0, comma);
   const std::string rest =
       comma == std::string::npos ? "" : body.substr(comma + 1);
-  if (mute_.count(cmd)) {
+  if (mute_.contains(cmd)) {
     return;
   }
-  if (nak_writes_.count(cmd) && rest.starts_with("W,")) {
+  if (nak_writes_.contains(cmd) && rest.starts_with("W,")) {
     Send(Line(cmd + ",ERROR,1"));
     return;
   }
-  if (nak_.count(cmd)) {
+  if (nak_.contains(cmd)) {
     Send(Line(cmd + ",ERROR,1"));
     return;
   }
@@ -257,7 +265,7 @@ void SimLg290p::Loop() {
   int64_t next_epoch = MonotonicNs();
   while (!stop_) {
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     if (!plugged_ || master_ < 0) {
       continue;
     }
@@ -275,7 +283,7 @@ void SimLg290p::Loop() {
               Line(
                   "GNRMC,003538.300,A,4637.80000000,N,00846.80000000,E,0.010,"
                   "045.00,101126,,,A,V");
-          (void)!write(master_, old.data(), old.size());
+          WriteBytes(master_, old.data(), old.size());
         }
       }
     }
@@ -296,7 +304,8 @@ void SimLg290p::Loop() {
     if (now < next_epoch) {
       continue;
     }
-    int interval = std::atoi(settings_["PQTMCFGFIXRATE"].c_str());
+    int interval = 0;
+    (void)internal::ParseNumber(settings_["PQTMCFGFIXRATE"], interval);
     if (interval <= 0) {
       interval = 100;
     }
@@ -316,7 +325,9 @@ void SimLg290p::Loop() {
     const int q = quality_;
     const std::string age = (q == 4 || q == 5) ? "1.0,0042" : ",";
     auto rate = [&](const std::string& m) {
-      return std::atoi(settings_["MSG:" + m].c_str());
+      int r = 0;
+      (void)internal::ParseNumber(settings_["MSG:" + m], r);
+      return r;
     };
     if (rate("GGA") > 0) {
       Send(Line(std::string("GNGGA,") + t +

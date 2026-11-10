@@ -31,8 +31,8 @@ class LocalFrame {
                              double& lon_deg, double& h_m) noexcept;
 
  private:
-  double origin_[3];  // ECEF
-  double r_[3][3];    // rows: east, north, up unit vectors in ECEF
+  double origin_[3] = {};  // ECEF
+  double r_[3][3] = {};    // rows: east, north, up unit vectors in ECEF
 };
 
 }  // namespace lgrtk

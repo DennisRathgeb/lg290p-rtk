@@ -138,6 +138,9 @@ int SerialPort::Read(std::span<uint8_t> buf, int timeout_ms) noexcept {
   return 0;
 }
 
+// Writing changes the device, so these are not const despite not touching
+// members.
+// NOLINTNEXTLINE(readability-make-member-function-const)
 bool SerialPort::WriteSome(std::span<const uint8_t> data,
                            size_t& written) noexcept {
   written = 0;
@@ -170,6 +173,7 @@ bool SerialPort::SetBaud(int baud) noexcept {
   return true;
 }
 
+// NOLINTNEXTLINE(readability-make-member-function-const)
 void SerialPort::Flush() noexcept {
   if (fd_ >= 0) {
     tcflush(fd_, TCIOFLUSH);
