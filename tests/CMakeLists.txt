@@ -55,6 +55,7 @@ if(LGRTK_BUILD_DAEMON)
     daemon/chrony_test.cc
     daemon/sd_notify_test.cc
     daemon/control_test.cc
+    daemon/daemon_test.cc
   )
   target_include_directories(lgrtkd_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries(lgrtkd_tests PRIVATE util lgrtkd_core GTest::gtest_main lgrtk_warnings)

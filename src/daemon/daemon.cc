@@ -185,6 +185,10 @@ void Daemon::StopDevices() {
 }
 
 void Daemon::Stop() {
+  if (stopped_) {
+    return;
+  }
+  stopped_ = true;
   SdNotify("STOPPING=1");
   StopDevices();
 }

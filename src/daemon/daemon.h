@@ -39,7 +39,8 @@ class Daemon {
   void Run(bool handle_signals);
   /// Makes Run() return. Thread-safe.
   void Quit() { loop_.Quit(); }
-  /// Stops NTRIP and the receiver. Call after Run() returned.
+  /// Stops NTRIP and the receiver and tells systemd (STOPPING=1). Call after
+  /// Run() returned; later calls, including the destructor's, do nothing.
   void Stop();
 
  private:
@@ -62,6 +63,7 @@ class Daemon {
   std::unique_ptr<Lg290pReceiver> rx_;
   std::unique_ptr<NtripClient> ntrip_;
   State state_ = State::kDisconnected;
+  bool stopped_ = false;
 };
 
 }  // namespace lgrtk::daemon
