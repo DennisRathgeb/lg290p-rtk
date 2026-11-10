@@ -16,9 +16,13 @@ add_executable(lgrtk_tests
   lg290p_test.cc
   serial_test.cc
   receiver_test.cc
+  projection_test.cc
   sim/sim_lg290p.cc
 )
 target_include_directories(lgrtk_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(lgrtk_tests PRIVATE util lgrtk::lgrtk GTest::gtest_main lgrtk_warnings)
+if(LGRTK_HAVE_PROJ)
+  target_link_libraries(lgrtk_tests PRIVATE lgrtk::projection)
+endif()
 target_compile_definitions(lgrtk_tests PRIVATE LGRTK_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 gtest_discover_tests(lgrtk_tests DISCOVERY_TIMEOUT 30)

@@ -23,12 +23,36 @@ add_library(lgrtk
   src/lg290p.cc
   src/serial.cc
   src/receiver.cc
+  src/local_frame.cc
 )
 add_library(lgrtk::lgrtk ALIAS lgrtk)
 target_include_directories(lgrtk PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_link_libraries(lgrtk PUBLIC Threads::Threads PRIVATE lgrtk_warnings)
+
+# Optional PROJ-based projection component.
+set(LGRTK_HAVE_PROJ OFF)
+if(LGRTK_WITH_PROJ)
+  find_package(PROJ CONFIG QUIET)
+  if(NOT PROJ_FOUND)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+      pkg_check_modules(PROJPC QUIET IMPORTED_TARGET proj)
+    endif()
+  endif()
+  if(PROJ_FOUND OR PROJPC_FOUND)
+    set(LGRTK_HAVE_PROJ ON)
+    add_library(lgrtk_projection src/projection.cc)
+    add_library(lgrtk::projection ALIAS lgrtk_projection)
+    target_link_libraries(lgrtk_projection PUBLIC lgrtk
+      PRIVATE $<IF:$<TARGET_EXISTS:PROJ::proj>,PROJ::proj,PkgConfig::PROJPC> lgrtk_warnings)
+    target_compile_definitions(lgrtk_projection PUBLIC LGRTK_HAVE_PROJ=1)
+    message(STATUS "lgrtk: PROJ found, building lgrtk::projection")
+  else()
+    message(STATUS "lgrtk: PROJ not found, lgrtk::projection disabled")
+  endif()
+endif()
 
 if(LGRTK_BUILD_TESTS)
   enable_testing()
