@@ -209,6 +209,13 @@ class Lg290pReceiver final : public CorrectionSink {
   void DrainInject();
   void ServeQueue();
   void FailPendingQueue();
+  /// Resolves the in-flight command (if any) with `reply` and clears it.
+  void FinishInFlight(std::optional<nmea::OwnedReply> reply);
+  /// Stores `fix` as the latest, counts it and calls OnFix. Returns the state
+  /// read together with the store.
+  State PublishFix(const Fix& fix);
+  State CurrentState() const;
+  std::string LastError() const;
   bool StopRequested() const { return stop_.load(std::memory_order_relaxed); }
 
   ReceiverOptions opt_;
