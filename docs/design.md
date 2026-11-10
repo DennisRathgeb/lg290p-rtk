@@ -1,8 +1,8 @@
 # lg290p-rtk: an open-source Linux toolkit for the Quectel LG290P RTK receiver
 
-Design, 2026-11-10. Status: draft for Dennis's approval.
-Written in `ar-stack` because the conversation happened here; it moves to the new repository's
-`docs/design.md` when that repository is created.
+Design, 2026-11-10. Status: implemented as v0.1.0 (milestone 1). Dennis asked for autonomous
+work after reviewing the outline; the builder-check resolutions are in §9.1 and every call taken
+without him is in [decisions.md](decisions.md).
 
 ## 1. Intent
 
