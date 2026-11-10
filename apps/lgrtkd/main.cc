@@ -2,9 +2,9 @@
 // lgrtkd: serves one Quectel LG290P system-wide (gpsd JSON, raw tap, chrony,
 // control socket). Runs in the foreground; systemd supervises it.
 #include <pthread.h>
-#include <signal.h>
 #include <unistd.h>
 
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <optional>

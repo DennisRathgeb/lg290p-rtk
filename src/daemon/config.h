@@ -38,9 +38,9 @@ struct DaemonConfig {
   NtripSection ntrip;       ///< `[ntrip]`
 };
 
-/// Parses TOML text. Unknown tables or keys, wrong types and invalid values
+/// Parses TOML `text`. Unknown tables or keys, wrong types and invalid values
 /// are errors; `err` names the offending key (or the line of a syntax error).
-[[nodiscard]] std::optional<DaemonConfig> ParseConfig(std::string_view toml,
+[[nodiscard]] std::optional<DaemonConfig> ParseConfig(std::string_view text,
                                                       std::string* err);
 /// Reads and parses a file.
 [[nodiscard]] std::optional<DaemonConfig> LoadConfig(const std::string& path,

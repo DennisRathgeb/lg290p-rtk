@@ -64,7 +64,7 @@ void EventLoop::Remove(int fd) { watches_.erase(fd); }
 
 void EventLoop::Post(std::function<void()> fn) {
   {
-    std::lock_guard<std::mutex> lock(mu_);
+    const std::scoped_lock lock(mu_);
     posted_.push_back(std::move(fn));
   }
   Wake();
@@ -82,14 +82,16 @@ void EventLoop::Quit() {
 void EventLoop::Wake() {
   const uint64_t one = 1;
   if (wake_fd_) {
-    (void)!write(wake_fd_.Get(), &one, sizeof one);
+    // Best effort: a full counter already wakes the loop.
+    const ssize_t written = write(wake_fd_.Get(), &one, sizeof one);
+    static_cast<void>(written);
   }
 }
 
 void EventLoop::DrainPosted() {
   std::vector<std::function<void()>> todo;
   {
-    std::lock_guard<std::mutex> lock(mu_);
+    const std::scoped_lock lock(mu_);
     todo.swap(posted_);
   }
   for (auto& fn : todo) {

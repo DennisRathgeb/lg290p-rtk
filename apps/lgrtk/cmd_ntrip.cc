@@ -64,7 +64,8 @@ int Sourcetable(Args& a, bool v1) {
 
 }  // namespace
 
-int CmdNtrip(Args& a, ReceiverOptions o) {
+int CmdNtrip(Args& a, const ReceiverOptions& options) {
+  ReceiverOptions o = options;
   const std::string op = a.Next();
   const bool v1 = a.Flag("--v1");
   if (op == "sourcetable") {

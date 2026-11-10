@@ -61,14 +61,14 @@ talking to a running lgrtkd (which owns the port):
 exit codes: 0 ok, 1 runtime error, 2 usage error
 )";
 
-int CmdVersion(Args& /*a*/, ReceiverOptions /*o*/) {
+int CmdVersion(Args& /*a*/, const ReceiverOptions& /*o*/) {
   std::printf("lgrtk %s\n", kVersion);
   return kOk;
 }
 
 struct Command {
   std::string_view name;
-  int (*fn)(Args&, ReceiverOptions);
+  int (*fn)(Args&, const ReceiverOptions&);
 };
 
 constexpr Command kCommands[] = {

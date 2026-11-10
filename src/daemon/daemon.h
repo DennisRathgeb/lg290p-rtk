@@ -36,6 +36,8 @@ class Daemon {
   ~Daemon();
   Daemon(const Daemon&) = delete;
   Daemon& operator=(const Daemon&) = delete;
+  Daemon(Daemon&&) = delete;
+  Daemon& operator=(Daemon&&) = delete;
 
   /// Binds every socket and starts the receiver (and NTRIP). False with
   /// `err` when a socket cannot be bound or the password cannot be read.

@@ -18,7 +18,8 @@
 
 namespace lgrtk::cli {
 
-int CmdProbe(Args& a, ReceiverOptions o) {
+int CmdProbe(Args& a, const ReceiverOptions& options) {
+  ReceiverOptions o = options;
   int seconds = 60;
   if (auto s = a.Option("--seconds"); s && !ToInt(*s, seconds)) {
     return Usage("--seconds needs a number");
@@ -46,7 +47,7 @@ int CmdProbe(Args& a, ReceiverOptions o) {
     rx.OnRaw([&](std::span<const uint8_t> b) { rec->Write(b); });
   }
   rx.OnNmea([&](std::string_view line) {
-    const std::lock_guard lk(mu);
+    const std::scoped_lock lk(mu);
     stats.Add(line);
   });
   if (!StartReceiver(rx)) {
@@ -54,7 +55,7 @@ int CmdProbe(Args& a, ReceiverOptions o) {
   }
   {
     // Count only what arrives after the start-up.
-    const std::lock_guard lk(mu);
+    const std::scoped_lock lk(mu);
     stats = ProbeStats{};
   }
   const auto t0 = std::chrono::steady_clock::now();
@@ -64,16 +65,17 @@ int CmdProbe(Args& a, ReceiverOptions o) {
           .count();
   const auto st = rx.Status();
   rx.Stop();
-  const std::lock_guard lk(mu);
+  const std::scoped_lock lk(mu);
   PrintProbeReport(st, stats, dt);
-  if (rec) {
+  if (rec && raw) {
     std::printf("raw: %llu bytes written to %s\n",
                 static_cast<unsigned long long>(rec->Bytes()), raw->c_str());
   }
   return kOk;
 }
 
-int CmdWatch(Args& a, ReceiverOptions o) {
+int CmdWatch(Args& a, const ReceiverOptions& options) {
+  ReceiverOptions o = options;
   int count = 0;
   if (auto s = a.Option("--count"); s && !ToInt(*s, count)) {
     return Usage("--count needs a number");
@@ -101,7 +103,8 @@ int CmdWatch(Args& a, ReceiverOptions o) {
   return kOk;
 }
 
-int CmdStatus(Args& a, ReceiverOptions o) {
+int CmdStatus(Args& a, const ReceiverOptions& options) {
+  ReceiverOptions o = options;
   int seconds = 5;
   if (auto s = a.Option("--seconds"); s && !ToInt(*s, seconds)) {
     return Usage("--seconds needs a number");

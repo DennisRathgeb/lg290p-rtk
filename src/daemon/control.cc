@@ -17,7 +17,7 @@ json Fail(const std::string& msg) {
 }
 
 // Merges the handler's fields under "ok"; an "error" field marks failure.
-json Reply(json fields) {
+json Reply(const json& fields) {
   json r{{kFieldOk, !fields.contains(kFieldError)}};
   if (fields.is_object()) {
     r.update(fields);

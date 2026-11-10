@@ -30,8 +30,10 @@ void SdNotify(std::string_view state) {
   if (!fd) {
     return;
   }
-  (void)!sendto(fd.Get(), state.data(), state.size(), MSG_NOSIGNAL, a.Get(),
-                a.len);
+  // Best effort, as sd_notify(3): nothing to do when systemd does not listen.
+  const ssize_t sent = sendto(fd.Get(), state.data(), state.size(),
+                              MSG_NOSIGNAL, a.Get(), a.len);
+  static_cast<void>(sent);
 }
 
 int64_t WatchdogPeriodMs() {

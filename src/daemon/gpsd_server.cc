@@ -40,10 +40,10 @@ void GpsdServer::OnLine(ClientSet::Id id, std::string_view line) {
   }
 }
 
-void GpsdServer::OnCommand(ClientSet::Id id, std::string_view line) {
-  const auto cmd = ParseGpsdCommand(line);
+void GpsdServer::OnCommand(ClientSet::Id id, std::string_view command) {
+  const auto cmd = ParseGpsdCommand(command);
   if (!cmd) {
-    clients_.Send(id, ErrorJson("Invalid request: " + std::string(line)));
+    clients_.Send(id, ErrorJson("Invalid request: " + std::string(command)));
     return;
   }
   switch (cmd->kind) {
@@ -68,7 +68,7 @@ void GpsdServer::OnCommand(ClientSet::Id id, std::string_view line) {
       break;
     case GpsdCommand::kUnknown:
       clients_.Send(
-          id, ErrorJson("Unrecognized request '" + std::string(line) + "'"));
+          id, ErrorJson("Unrecognized request '" + std::string(command) + "'"));
       break;
   }
 }

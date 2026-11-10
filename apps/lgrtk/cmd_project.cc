@@ -12,7 +12,7 @@
 
 namespace lgrtk::cli {
 
-int CmdProject(Args& a, ReceiverOptions /*o*/) {
+int CmdProject(Args& a, const ReceiverOptions& /*o*/) {
 #ifdef LGRTK_HAVE_PROJ
   const auto from = a.Option("--from");
   const auto to = a.Option("--to");

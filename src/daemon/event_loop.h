@@ -75,7 +75,7 @@ class EventLoop {
 int BoundPort(int fd);
 
 /// Output buffered per client before it is dropped (docs/decisions.md D24).
-inline constexpr size_t kClientBufferCap = 256 * 1024;
+inline constexpr size_t kClientBufferCap = size_t{256} * 1024;
 /// Clients per listening socket (docs/decisions.md D24).
 inline constexpr size_t kMaxClients = 64;
 /// Longest input line; a client sending a longer one is dropped.
@@ -110,6 +110,8 @@ class ClientSet {
   ~ClientSet();
   ClientSet(const ClientSet&) = delete;
   ClientSet& operator=(const ClientSet&) = delete;
+  ClientSet(ClientSet&&) = delete;
+  ClientSet& operator=(ClientSet&&) = delete;
 
   /// Accepts clients from `listen_fd`.
   void AddListener(internal::UniqueFd listen_fd);

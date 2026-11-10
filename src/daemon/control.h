@@ -32,6 +32,8 @@ class ControlServer {
   ~ControlServer();
   ControlServer(const ControlServer&) = delete;
   ControlServer& operator=(const ControlServer&) = delete;
+  ControlServer(ControlServer&&) = delete;
+  ControlServer& operator=(ControlServer&&) = delete;
   /// Listens on `path` (a stale socket file is replaced).
   bool Listen(const std::string& path, std::string* err);
 

@@ -17,7 +17,8 @@ namespace {
 namespace lg = lgrtk::lg290p;
 
 // Opens the receiver without configuring it and sends `cmds`.
-int Run(ReceiverOptions o, const std::vector<lg::Command>& cmds) {
+int Run(const ReceiverOptions& base, const std::vector<lg::Command>& cmds) {
+  ReceiverOptions o = base;
   o.apply_config = false;
   Lg290pReceiver rx(o);
   if (!StartReceiver(rx)) {
@@ -105,7 +106,8 @@ std::optional<lg::Command> SetCommand(const std::string& key,
   return std::nullopt;
 }
 
-int ApplyDefault(ReceiverOptions o) {
+int ApplyDefault(const ReceiverOptions& base) {
+  ReceiverOptions o = base;
   o.config = lg::DefaultRoverConfig();
   o.apply_config = true;
   Lg290pReceiver rx(o);
@@ -120,7 +122,7 @@ int ApplyDefault(ReceiverOptions o) {
 
 }  // namespace
 
-int CmdConfig(Args& a, ReceiverOptions o) {
+int CmdConfig(Args& a, const ReceiverOptions& options) {
   const std::string op = a.Next();
   const std::string key = a.Next();
   std::vector<std::string> vals;
@@ -135,7 +137,7 @@ int CmdConfig(Args& a, ReceiverOptions o) {
     if (!c) {
       return Usage("config get: unknown key '" + key + "'");
     }
-    return Run(o, {*c});
+    return Run(options, {*c});
   }
   if (op == "set") {
     bool bad_values = false;
@@ -150,15 +152,15 @@ int CmdConfig(Args& a, ReceiverOptions o) {
       std::fprintf(stderr, "note: %s takes effect after `lgrtk reset soft`\n",
                    key.c_str());
     }
-    return Run(o, {*c, lg::SaveParams()});
+    return Run(options, {*c, lg::SaveParams()});
   }
   if (op == "apply-default") {
-    return ApplyDefault(o);
+    return ApplyDefault(options);
   }
   return Usage("config: expected get, set or apply-default");
 }
 
-int CmdReset(Args& a, ReceiverOptions o) {
+int CmdReset(Args& a, const ReceiverOptions& options) {
   const bool yes = a.Flag("--yes");
   const std::string kind = a.Next();
   std::vector<lg::Command> cmds;
@@ -173,10 +175,10 @@ int CmdReset(Args& a, ReceiverOptions o) {
   } else {
     return Usage("reset: expected hot, warm, cold, soft or factory");
   }
-  return Run(o, cmds);
+  return Run(options, cmds);
 }
 
-int CmdBase(Args& a, ReceiverOptions o) {
+int CmdBase(Args& a, const ReceiverOptions& options) {
   const std::string mode = a.Next();
   std::vector<lg::Command> cmds;
   if (mode == "survey-in") {
@@ -206,7 +208,7 @@ int CmdBase(Args& a, ReceiverOptions o) {
   }
   cmds.push_back(lg::SaveParams());
   cmds.push_back(lg::SoftwareReset());
-  const int rc = Run(o, cmds);
+  const int rc = Run(options, cmds);
   if (rc == kOk && mode != "rover") {
     std::printf(
         "base mode set; watch progress with `lgrtk status` (PQTMSVINSTATUS)\n");

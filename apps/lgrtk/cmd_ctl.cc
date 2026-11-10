@@ -15,7 +15,7 @@ constexpr int kCtlTimeoutMs = 5000;
 
 }  // namespace
 
-int CmdCtl(Args& a, ReceiverOptions /*o*/) {
+int CmdCtl(Args& a, const ReceiverOptions& /*o*/) {
   namespace d = lgrtk::daemon;
   const std::string sock =
       a.Option("--socket").value_or(d::kDefaultControlSocket);
