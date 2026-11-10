@@ -95,9 +95,8 @@ class NtripClient {
   [[nodiscard]] NtripStatus Status() const;
 
   /// Downloads a caster's sourcetable (list of mountpoints).
-  static std::optional<std::string> FetchSourcetable(const std::string& host,
-                                                     int port, int version,
-                                                     std::string& err);
+  [[nodiscard]] static std::optional<std::string> FetchSourcetable(
+      const std::string& host, int port, int version, std::string& err);
 
  private:
   void Run();

@@ -123,8 +123,8 @@ struct FixSnapshot {
 class RawRecorder {
  public:
   /// Opens (truncates) `path`.
-  static std::optional<RawRecorder> Open(const std::string& path,
-                                         std::string& err);
+  [[nodiscard]] static std::optional<RawRecorder> Open(const std::string& path,
+                                                       std::string& err);
   /// Moves the open file.
   RawRecorder(RawRecorder&& o) noexcept;
   /// Closes this file and takes over `o`'s.
@@ -187,7 +187,8 @@ class Lg290pReceiver final : public CorrectionSink {
   [[nodiscard]] FixSnapshot Snapshot() const;
   /// Queues a command; the future gets the reply (nullopt on timeout or when
   /// the command expects none). Executed while streaming.
-  std::future<std::optional<nmea::OwnedReply>> Send(lg290p::Command cmd);
+  [[nodiscard]] std::future<std::optional<nmea::OwnedReply>> Send(
+      lg290p::Command cmd);
   /// Queues RTCM3 frames for the receiver (CorrectionSink).
   bool Inject(std::span<const uint8_t> rtcm_frames) override;
 

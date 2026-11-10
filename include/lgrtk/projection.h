@@ -30,9 +30,8 @@ class Projection {
   /// for projected CRSs). Refuses (nullopt + reason) when PROJ only finds a
   /// "ballpark" transformation or the best one needs a grid that is not
   /// installed; the reason names the grid.
-  static std::optional<Projection> Create(std::string_view from_crs,
-                                          std::string_view to_crs,
-                                          std::string& err);
+  [[nodiscard]] static std::optional<Projection> Create(
+      std::string_view from_crs, std::string_view to_crs, std::string& err);
   /// Moves the PROJ context and pipeline.
   Projection(Projection&&) noexcept;
   /// Moves the PROJ context and pipeline.
@@ -68,9 +67,8 @@ struct FixFrames {
 class FixProjector {
  public:
   /// Builds one Projection per declared frame to `to_crs`.
-  static std::optional<FixProjector> Create(const FixFrames& frames,
-                                            std::string_view to_crs,
-                                            std::string& err);
+  [[nodiscard]] static std::optional<FixProjector> Create(
+      const FixFrames& frames, std::string_view to_crs, std::string& err);
   /// Projects `fix` into `out`; false (with a reason) for a fix without a
   /// position or in a frame without a declared CRS.
   bool Project(const Fix& fix, double out[3], std::string& err) const;
