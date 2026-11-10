@@ -5,8 +5,8 @@ centimetre-level RTK position source.** C++20 library `lgrtk`, a command-line to
 corrections and fast coordinate projection, built around an explicit, tested state machine
 that survives unplugging, receiver resets and wrong baud rates.
 
-<!-- Photo: replace with docs/images/module-top.jpg once taken (see docs/images/README.md) -->
-> 📷 *Photo of the Waveshare LG290P GNSS RTK Module with the Q39 helical antenna goes here.*
+<p align="center"><img src="docs/images/module-top.jpg" width="420"
+  alt="Waveshare LG290P GNSS RTK Module with a Q39 helical antenna, RTC battery and USB-C cable"></p>
 
 ![What is connected to what on the Waveshare LG290P board](docs/images/board.svg)
 
