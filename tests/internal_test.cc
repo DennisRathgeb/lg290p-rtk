@@ -109,12 +109,21 @@ TEST(UnixSocketTest, FilesystemPath) {
   EXPECT_EQ(a.len, offsetof(sockaddr_un, sun_path) + 12);
 }
 
-TEST(UnixSocketTest, AbstractName) {
+TEST(UnixSocketTest, AbstractNameOnlyWhenAllowed) {
   UnixAddress a;
-  ASSERT_TRUE(MakeUnixAddress("@notify", a));
+  ASSERT_TRUE(MakeUnixAddress("@notify", a, AtPrefix::kAbstract));
   EXPECT_EQ(a.addr.sun_path[0], '\0');
   EXPECT_EQ(std::string(a.addr.sun_path + 1, 6), "notify");
   EXPECT_EQ(a.len, offsetof(sockaddr_un, sun_path) + 7);
+}
+
+TEST(UnixSocketTest, AtIsAPlainFileNameByDefault) {
+  // A configured control or chrony socket "@x" must stay a filesystem socket
+  // (its permissions protect it); only $NOTIFY_SOCKET uses abstract names.
+  UnixAddress a;
+  ASSERT_TRUE(MakeUnixAddress("@x", a));
+  EXPECT_EQ(std::string(a.addr.sun_path), "@x");
+  EXPECT_EQ(a.len, offsetof(sockaddr_un, sun_path) + 3);
 }
 
 TEST(UnixSocketTest, RejectsEmptyAndTooLong) {

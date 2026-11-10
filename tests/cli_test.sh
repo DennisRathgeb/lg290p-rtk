@@ -44,6 +44,17 @@ rc=$?
 set -e
 [ "$rc" -eq 2 ] || fail "--baud 99999999999 should exit 2, got $rc"
 
+# An empty password file is an error before anything connects.
+EMPTY_PW=$(mktemp)
+set +e
+err=$("$LGRTK" --port "$PORT" ntrip run --host 127.0.0.1 --mount M --user u \
+  --password-file "$EMPTY_PW" 2>&1 >/dev/null)
+rc=$?
+set -e
+rm -f "$EMPTY_PW"
+[ "$rc" -eq 1 ] || fail "empty password file should exit 1, got $rc: $err"
+grep -q "password file" <<<"$err" || fail "empty password file: $err"
+
 out=$("$LGRTK" --port "$PORT" watch --count 3) || fail "watch exit $?"
 [ "$(grep -c "single" <<<"$out")" -ge 3 ] || fail "watch: $out"
 

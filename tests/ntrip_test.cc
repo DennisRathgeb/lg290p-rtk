@@ -237,6 +237,8 @@ TEST(NtripTest, FetchSourcetableV1) {
   ASSERT_TRUE(table) << err;
   EXPECT_EQ(*table, FakeCaster::Sourcetable());
   EXPECT_NE(caster.Requests().at(0).find("GET / HTTP/1.0"), std::string::npos);
+  EXPECT_NE(caster.Requests().at(0).find("Connection: close"),
+            std::string::npos);
 }
 
 TEST(NtripTest, UnknownMountpointReportsSourcetable) {

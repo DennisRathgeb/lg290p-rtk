@@ -23,7 +23,7 @@ void SdNotify(std::string_view state) {
   internal::UnixAddress a;
   // Only absolute paths and abstract names ("@...") are valid.
   if ((path[0] != '/' && path[0] != '@') ||
-      !internal::MakeUnixAddress(path, a)) {
+      !internal::MakeUnixAddress(path, a, internal::AtPrefix::kAbstract)) {
     return;
   }
   const internal::UniqueFd fd(socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0));

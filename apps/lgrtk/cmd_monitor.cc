@@ -54,9 +54,12 @@ int CmdProbe(Args& a, const ReceiverOptions& options) {
     return kRuntime;
   }
   {
-    // Count only what arrives after the start-up.
+    // Count only what arrives after the start-up; keep the latest GGA so the
+    // report has one even if none arrives during the window.
     const std::scoped_lock lk(mu);
+    const auto last_gga = stats.last_gga;
     stats = ProbeStats{};
+    stats.last_gga = last_gga;
   }
   const auto t0 = std::chrono::steady_clock::now();
   WaitInterruptible(seconds);

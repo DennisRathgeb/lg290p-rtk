@@ -92,8 +92,9 @@ int CmdNtrip(Args& a, const ReceiverOptions& options) {
   if (auto f = a.Option("--password-file")) {
     std::string err;
     auto pw = internal::ReadFirstLine(*f, &err);
-    if (!pw) {
-      std::cerr << "lgrtk: cannot read password file " << *f << "\n";
+    if (!pw || pw->empty()) {
+      std::cerr << "lgrtk: cannot read password file " << *f
+                << (pw ? " (empty)" : "") << "\n";
       return kRuntime;
     }
     no.password = std::move(*pw);

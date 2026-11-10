@@ -50,10 +50,12 @@ struct HttpRequest {
   std::string_view gga;   // "$GPGGA...\r\n" for NTRIP 2's header; may be empty
   std::string_view user;  // empty: no Authorization header
   std::string_view password;
+  bool close_connection = false;  // ask the server to close after the reply
 };
 
 // The request text. NTRIP 1 is plain HTTP/1.0; NTRIP 2 adds Host,
-// Ntrip-Version, the optional Ntrip-GGA header and Connection: close.
+// Ntrip-Version, the optional Ntrip-GGA header and Connection: close (also
+// sent with NTRIP 1 when `close_connection` is set).
 std::string BuildRequest(const HttpRequest& r) {
   std::string req =
       "GET " + r.path + (r.version == 1 ? " HTTP/1.0\r\n" : " HTTP/1.1\r\n");
@@ -68,6 +70,8 @@ std::string BuildRequest(const HttpRequest& r) {
       req += internal::TrimLineEnd(r.gga);
       req += "\r\n";
     }
+  }
+  if (r.version != 1 || r.close_connection) {
     req += "Connection: close\r\n";
   }
   if (!r.user.empty()) {
@@ -524,7 +528,14 @@ std::optional<std::string> NtripClient::FetchSourcetable(
   if (!sock) {
     return std::nullopt;
   }
-  const HttpRequest request{host, port, version, "/", "", "", ""};
+  const HttpRequest request{host,
+                            port,
+                            version,
+                            "/",
+                            "",
+                            "",
+                            "",
+                            /*close_connection=*/true};
   if (!internal::SendAll(sock.Get(), BuildRequest(request))) {
     err = "cannot send request";
     return std::nullopt;

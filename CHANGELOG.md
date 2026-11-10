@@ -12,6 +12,10 @@ Fixes:
 - `lgrtk`: numbers are validated (`--baud 99999999999` and non-numeric message versions were
   silently truncated or read as 0); `ntrip sourcetable` rejects ports outside 1..65535.
 - `lgrtkd`: `STOPPING=1` is sent to systemd once, not twice.
+- `lgrtk ntrip run`: an empty password file is an error again (it connected without a
+  password); `lgrtk probe` keeps the start-up GGA in its report.
+- Socket paths starting with `@` are ordinary file names; only `$NOTIFY_SOCKET` uses abstract
+  sockets (a configured `@` control socket would otherwise lose its file permissions).
 
 Added:
 - `lg290p::RestartByName`, `ToGgaQuality(FixType)`; `[[nodiscard]]` on factories and `Send()`.

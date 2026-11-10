@@ -8,6 +8,7 @@
 #include <sys/un.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <string_view>
 
@@ -23,14 +24,21 @@ struct UnixAddress {
   }
 };
 
-/// Builds the address for `path`; a leading '@' names an abstract socket (as
-/// in $NOTIFY_SOCKET). False when the path is empty or too long.
-[[nodiscard]] inline bool MakeUnixAddress(std::string_view path,
-                                          UnixAddress& out) noexcept {
+/// What a leading '@' in a socket path means.
+enum class AtPrefix : uint8_t {
+  kFileName,  ///< part of a filesystem path (configured sockets)
+  kAbstract,  ///< an abstract socket, as in $NOTIFY_SOCKET
+};
+
+/// Builds the address for `path`. False when the path is empty or too long.
+[[nodiscard]] inline bool MakeUnixAddress(
+    std::string_view path, UnixAddress& out,
+    AtPrefix at = AtPrefix::kFileName) noexcept {
   out = UnixAddress{};
   out.addr.sun_family = AF_UNIX;
   // Abstract names need no terminating NUL; filesystem paths do.
-  const bool abstract = !path.empty() && path.front() == '@';
+  const bool abstract =
+      at == AtPrefix::kAbstract && !path.empty() && path.front() == '@';
   const size_t cap = sizeof out.addr.sun_path - (abstract ? 0 : 1);
   if (path.empty() || path.size() > cap) {
     return false;

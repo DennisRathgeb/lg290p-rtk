@@ -5,6 +5,7 @@
 #include <poll.h>
 #include <sys/socket.h>
 
+#include <algorithm>
 #include <cctype>
 #include <cerrno>
 #include <charconv>
@@ -166,8 +167,11 @@ bool ParseHttpStatus(std::string_view status_line, int& status) noexcept {
       !ParseNumber(version.substr(dot + 1), minor)) {
     return false;
   }
+  // The code: after any blanks, the leading digits (some casters omit the
+  // space before the reason or pad with extra spaces).
   std::string_view rest = status_line.substr(space + 1);
-  rest = rest.substr(0, rest.find(' '));
+  rest.remove_prefix(std::min(rest.find_first_not_of(' '), rest.size()));
+  rest = rest.substr(0, rest.find_first_not_of("0123456789"));
   int code = 0;
   if (!ParseNumber(rest, code)) {
     return false;

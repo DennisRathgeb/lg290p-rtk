@@ -85,6 +85,11 @@ TEST(ParseHttpStatusTest, StatusLines) {
   EXPECT_EQ(status, 200);
   ASSERT_TRUE(ParseHttpStatus("HTTP/1.0 401 Unauthorized", status));
   EXPECT_EQ(status, 401);
+  // Lenient like the common sscanf("HTTP/%d.%d %d") parsers casters expect.
+  ASSERT_TRUE(ParseHttpStatus("HTTP/1.1  200 OK", status));
+  EXPECT_EQ(status, 200);
+  ASSERT_TRUE(ParseHttpStatus("HTTP/1.1 200OK", status));
+  EXPECT_EQ(status, 200);
   ASSERT_TRUE(ParseHttpStatus("HTTP/1.1 404", status));
   EXPECT_EQ(status, 404);
   EXPECT_FALSE(ParseHttpStatus("ICY 200 OK", status));
