@@ -1,35 +1,48 @@
 #!/usr/bin/env bash
-# Records an LG290P session through lgrtkd until Ctrl-C (receiver read-only:
-# apply_config = false). Needs a built tree (make build) and python3.
+# Records an LG290P session through lgrtkd until Ctrl-C. The receiver is used
+# read-only (apply_config = false). Needs a built tree (make build) and python3.
 #
 #   tools/record-session.sh NAME                      # without corrections
-#   tools/record-session.sh NAME MOUNT USER [HOST]    # with NTRIP (password in ~/.ntrip-pw)
+#   tools/record-session.sh NAME HOST MOUNT USER      # with NTRIP
 #
-# Environment: LGRTK_PORT (default: the CH343 under /dev/serial/by-id, else
-# /dev/ttyACM0), LGRTK_DATA (default ~/data/bench), LGRTK_BIN (default
-# build/dev of this repository).
+# Environment:
+#   LGRTK_PORT                 serial device (default: the CH343 under
+#                              /dev/serial/by-id, else /dev/ttyACM0)
+#   LGRTK_DATA                 output root (default ~/.local/share/lgrtk/recordings)
+#   LGRTK_BIN                  directory with lgrtkd and lgrtk (default build/dev)
+#   LGRTK_NTRIP_PASSWORD_FILE  NTRIP password, one line (required with HOST)
 #
 # Writes $LGRTK_DATA/<date>-<NAME>/:
-#   raw.bin        every byte the receiver sent (NMEA + RTCM) - the ground truth
-#   gpsd.jsonl     every TPV/SKY/GST/DEVICES report with arrival time
+#   raw.bin        every byte the receiver sent (NMEA + RTCM), replayable
+#   gpsd.jsonl     every TPV/SKY/GST/DEVICES report with its arrival time
 #   status.log     `lgrtk ctl status` every 10 s (state, counters, NTRIP)
-#   lgrtkd.log     daemon log (state changes, NTRIP connects/auth)
+#   lgrtkd.log     daemon log (state changes, NTRIP connects)
 #   notes.txt      what you type at the end (place, sky, antenna, ...)
-# The files contain the receiver's position: do not commit or publish them.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 BIN=${LGRTK_BIN:-$HERE/../build/dev}
-NAME=${1:?usage: record-session.sh NAME [MOUNT USER [HOST]]}
-MOUNT=${2:-}
-USER_=${3:-}
-HOST=${4:-www.swipos.ch}
-OUT=${LGRTK_DATA:-$HOME/data/bench}/$(date +%F)-$NAME
+USAGE="usage: record-session.sh NAME [HOST MOUNT USER]"
+NAME=${1:?$USAGE}
+HOST=${2:-}
+MOUNT=${3:-}
+USER_=${4:-}
+if [ -n "$HOST" ] && { [ -z "$MOUNT" ] || [ -z "$USER_" ]; }; then
+  echo "$USAGE" >&2
+  exit 2
+fi
+OUT=${LGRTK_DATA:-$HOME/.local/share/lgrtk/recordings}/$(date +%F)-$NAME
 mkdir -p "$OUT"
 # Stable path of the Waveshare board (CH343) whatever ttyACM number it gets.
-PORT=${LGRTK_PORT:-$(ls /dev/serial/by-id/usb-1a86_* 2>/dev/null | head -1)}
-PORT=${PORT:-/dev/ttyACM0}
+PORT=${LGRTK_PORT:-}
+if [ -z "$PORT" ]; then
+  PORT=/dev/ttyACM0
+  for dev in /dev/serial/by-id/usb-1a86_*; do
+    [ -e "$dev" ] && PORT=$dev && break
+  done
+fi
 echo "receiver: $PORT -> $(readlink -f "$PORT")"
-SOCK=/tmp/lgrtkd-rec.sock
+RUN=$(mktemp -d)
+SOCK=$RUN/control.sock
 
 cat >"$OUT/lgrtkd.toml" <<EOF
 [receiver]
@@ -42,22 +55,23 @@ listen = "127.0.0.1:5018"
 [control]
 sock = "$SOCK"
 EOF
-if [ -n "$MOUNT" ]; then
-  [ -f "$HOME/.ntrip-pw" ] || { echo "put the password in ~/.ntrip-pw first" >&2; exit 2; }
+if [ -n "$HOST" ]; then
+  PW=${LGRTK_NTRIP_PASSWORD_FILE:?set LGRTK_NTRIP_PASSWORD_FILE to the password file}
+  [ -r "$PW" ] || { echo "cannot read $PW" >&2; exit 2; }
   cat >>"$OUT/lgrtkd.toml" <<EOF
 [ntrip]
 enabled = true
 host = "$HOST"
 mountpoint = "$MOUNT"
 user = "$USER_"
-password_file = "$HOME/.ntrip-pw"
+password_file = "$PW"
 EOF
 fi
 
 "$BIN/lgrtkd" --config "$OUT/lgrtkd.toml" 2>"$OUT/lgrtkd.log" &
 DAEMON=$!
 sleep 2
-kill -0 $DAEMON 2>/dev/null || { cat "$OUT/lgrtkd.log"; exit 1; }
+kill -0 "$DAEMON" 2>/dev/null || { cat "$OUT/lgrtkd.log"; exit 1; }
 
 # Raw tap and gpsd JSON, each to its own file.
 python3 -I - "$OUT" <<'PY' &
@@ -81,9 +95,10 @@ PY
 REC=$!
 
 stop() {
-  kill $REC 2>/dev/null || true
-  kill -TERM $DAEMON 2>/dev/null || true
-  wait $DAEMON 2>/dev/null || true
+  kill "$REC" 2>/dev/null || true
+  kill -TERM "$DAEMON" 2>/dev/null || true
+  wait "$DAEMON" 2>/dev/null || true
+  rm -rf "$RUN"
   echo
   echo "recorded to $OUT:"
   ls -la "$OUT"

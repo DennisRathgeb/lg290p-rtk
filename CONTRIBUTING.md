@@ -1,7 +1,5 @@
 # Contributing
 
-Same conventions as the `ar-stack` repository this toolkit came from.
-
 ## Workflow
 
 1. An issue first (what and why). Branch `issue-<n>-<slug>` from `main`.
@@ -23,7 +21,7 @@ Same conventions as the `ar-stack` repository this toolkit came from.
 - Tests first (GoogleTest). New receiver behaviour gets a case in the simulated LG290P
   (`tests/sim/`), never a test that needs hardware. Hardware findings go into
   `docs/hardware.md` marked **bench** with date and firmware, and into a regression test.
-- Decisions taken without the maintainer are recorded in `docs/decisions.md`.
+- A design choice with alternatives gets a row in `docs/decisions.md` (what, why, revisit if).
 
 ## Before a PR
 

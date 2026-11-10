@@ -1,55 +1,76 @@
 # lg290p-rtk
 
-**A Linux toolkit that turns the Quectel LG290P quad-band GNSS receiver into a dependable
-centimetre-level RTK position source.** C++20 library `lgrtk`, a command-line tool, NTRIP
-corrections and fast coordinate projection, built around an explicit, tested state machine
-that survives unplugging, receiver resets and wrong baud rates.
+[![ci](https://github.com/DennisRathgeb/lg290p-rtk/actions/workflows/ci.yml/badge.svg)](https://github.com/DennisRathgeb/lg290p-rtk/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/DennisRathgeb/lg290p-rtk)](https://github.com/DennisRathgeb/lg290p-rtk/releases)
+[![licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+
+**Linux driver, daemon and tools that turn the Quectel LG290P quad-band GNSS receiver into a
+dependable centimetre-level RTK position source.**
 
 <p align="center"><img src="docs/images/module-top.jpg" width="420"
   alt="Waveshare LG290P GNSS RTK Module with a Q39 helical antenna, RTC battery and USB-C cable"></p>
 
-![What is connected to what on the Waveshare LG290P board](docs/images/board.svg)
+The LG290P is the cheapest quad-band RTK receiver available, but on Linux nothing drives it:
+gpsd treats it as generic NMEA and cannot configure it, and the vendor tools are Windows or
+Arduino only. `lg290p-rtk` provides:
+
+- **the `lgrtk` library** (C++20): an explicit state machine that configures the receiver,
+  survives unplugging and resets, and delivers one `Fix` per epoch with RTK status, 1-sigma
+  errors and timestamps;
+- **the `lgrtkd` daemon**, which serves the receiver to every program on the machine over the
+  **gpsd protocol** (`cgps`, QGIS, Python `gps`), plus a raw byte tap and a chrony time source;
+- **the `lgrtk` command-line tool** to probe, watch, configure and reset the receiver;
+- **NTRIP** corrections and **PROJ** projection to national grids (e.g. Swiss LV95 + LHN95).
+
+## Contents
+
+- [Features](#features)
+- [Hardware](#hardware)
+- [Quick start](#quick-start)
+- [Using the library](#using-the-library)
+- [Running the daemon](#running-the-daemon)
+- [Command-line tool](#command-line-tool)
+- [Documentation](#documentation)
+- [Development](#development)
+- [Status](#status)
+
+## Features
 
 | | |
 |---|---|
-| Receiver | Quectel **LG290P (03)**: GPS, GLONASS, Galileo, BeiDou, QZSS, NavIC; L1/L2/L5/E6; 1040 channels; RTK 0.8 cm + 1 ppm; 10 Hz default, 20 Hz max |
-| Tested board | **Waveshare LG290P GNSS RTK Module** (USB-C, WCH CH343 → `/dev/ttyACM0`, 460800 baud), firmware `LG290P03AANR01A06S` |
+| **Knows the receiver** | typed builders for the `$PQTM` command set, checked against Quectel's protocol specification; firmware and baud detection; the configuration is read back and only differences are written, so the flash is not worn and the receiver resets only when needed |
+| **Never lies about freshness** | every fix carries the receiver's UTC and the host arrival time; the driver state and the age of the latest fix are always available; stale bytes the USB bridge replays after opening are discarded |
+| **Recovers by itself** | unplug, replug, receiver reboot, silence: each transition is reported and streaming resumes without a restart |
+| **RTK end to end** | NTRIP v1/v2 client with GGA upload for VRS casters; corrections injected over the same USB port without splitting an RTCM frame |
+| **Frames done right** | fixes are tagged autonomous or corrected, and projection refuses a fix whose frame has not been declared, so a 0.8 m frame mix-up cannot happen silently |
+| **Fast** | no allocation on the read → frame → parse → callback path; projection in microseconds |
+| **Tested without hardware** | a simulated LG290P on a pseudo-terminal and a fake NTRIP caster; CI with ASan/UBSan and ThreadSanitizer |
+
+## Hardware
+
+| | |
+|---|---|
+| Receiver | Quectel **LG290P (03)**: GPS, GLONASS, Galileo, BeiDou, QZSS, NavIC; L1/L2/L5/E6; RTK 0.8 cm + 1 ppm; 10 Hz default, 20 Hz max |
+| Reference board | **Waveshare LG290P GNSS RTK Module**: USB-C through a WCH CH343 (`/dev/ttyACM0`, 460800 baud), firmware `LG290P03AANR01A06S` |
 | Also fits | SparkFun LG290P breakout, RTK Postcard, any LG290P on a UART |
-| Platform | Linux (x86-64, aarch64 / Jetson), gcc ≥ 11 or clang ≥ 14, CMake ≥ 3.22 |
-| Licence | MIT |
+| Host | Linux on x86-64 or aarch64; gcc ≥ 11 or clang ≥ 14; CMake ≥ 3.22 |
 
-## Why
+![What is connected to what on the Waveshare LG290P board](docs/images/board.svg)
 
-The LG290P is the cheapest quad-band RTK receiver on the market, but on Linux there is no driver
-for it: gpsd treats it as generic NMEA and cannot configure it, SparkFun's library is
-Arduino-only, and every project ends up writing the same fragile serial loop. `lgrtk` is that
-loop done properly, once:
-
-- **It knows the receiver.** Typed builders for the `$PQTM` command set (checked against the
-  Quectel protocol specification), firmware and baud detection, and a configuration that is read
-  back and only *differences* are written, so the flash is not worn and a reset happens only when
-  a setting needs one.
-- **It never lies about freshness.** Every fix carries the receiver's UTC *and* the host
-  monotonic arrival time; the driver state and the age of the latest fix are always available;
-  stale bytes a USB bridge replays after reopening are discarded (found on the bench).
-- **It recovers by itself.** Unplug, replug, receiver reboot, silence: the state machine reports
-  each transition and goes back to streaming without a restart.
-- **It does RTK end to end.** NTRIP v1/v2 client with GGA upload for VRS casters, corrections
-  injected over the same USB port without ever splitting an RTCM frame, and PROJ-based
-  projection to national grids (e.g. Swiss LV95 + LHN95 heights, verified against swisstopo
-  REFRAME to 1 cm).
+The [hardware guide](docs/hardware.md) covers the board's pinout, the messages and commands that
+matter, the antenna, measured behaviour and troubleshooting.
 
 ## Quick start
 
 ```sh
-# dependencies (Arch: pacman -S cmake ninja gtest proj; Ubuntu: apt install cmake ninja-build libgtest-dev libproj-dev)
+# Arch:   pacman -S cmake ninja gtest proj
+# Ubuntu: apt install cmake ninja-build libgtest-dev libproj-dev
 git clone https://github.com/DennisRathgeb/lg290p-rtk && cd lg290p-rtk
-make test                 # builds with sanitizers and runs all tests, no hardware needed
-./build/dev/lgrtk probe --seconds 30      # plug the receiver in first
+make test                                 # build and run all tests; no hardware needed
+./build/dev/lgrtk probe --seconds 5       # with the receiver plugged in
 ```
 
 ```text
-$ lgrtk probe --seconds 5          # real output, bench 2026-11-10, indoors
 port: /dev/ttyACM0 at 460800 baud
 firmware: LG290P03AANR01A06S
 bytes 10657, NMEA 330, RTCM 0, bad checksum 0, bad CRC 0
@@ -61,12 +82,11 @@ PQTMEPE: not seen
 UTC span 5.0 s, backwards steps 0
 ```
 
-(Indoors, as above, expect no fix. Put the antenna outside.)
+This output was taken indoors, hence no fix: put the antenna under open sky.
+`Permission denied`? Join the serial group (`uucp` on Arch, `dialout` on Debian/Ubuntu) and log
+in again.
 
-Permission denied? Add yourself to the serial group (`uucp` on Arch, `dialout` on Debian/Ubuntu)
-and log in again. More in [docs/hardware.md](docs/hardware.md#troubleshooting).
-
-## The library in 20 lines
+## Using the library
 
 ```cpp
 #include <lgrtk/ntrip.h>
@@ -74,14 +94,14 @@ and log in again. More in [docs/hardware.md](docs/hardware.md#troubleshooting).
 #include <lgrtk/receiver.h>
 
 lgrtk::ReceiverOptions opt;                         // /dev/ttyACM0, 460800, detects the rest
-opt.config = lgrtk::lg290p::DefaultRoverConfig();   // 10 Hz, GGA/RMC/GST/EPE, RTK auto
+opt.config = lgrtk::lg290p::DefaultRoverConfig();   // 10 Hz, GGA/RMC/GST/EPE, RTK on
 lgrtk::Lg290pReceiver rx(opt);
 
-lgrtk::NtripClient ntrip({.host = "caster.example", .mountpoint = "MSM_GISGEO_LV95LHN95",
+lgrtk::NtripClient ntrip({.host = "caster.example", .mountpoint = "MOUNT",
                           .user = "me", .password = pw}, rx);   // corrections into the receiver
 std::string err;
-// Declare the frame of each kind of fix; projecting picks the matching one.
-auto lv95 = lgrtk::FixProjector::Create({.corrected_crs = "EPSG:4937"},   // swipos: CHTRS95
+// Declare the frame of corrected fixes; projecting picks the matching CRS.
+auto lv95 = lgrtk::FixProjector::Create({.corrected_crs = "EPSG:4937"},   // e.g. swipos: CHTRS95
                                         "EPSG:2056+5729", err);          // LV95 + LHN95
 
 rx.OnStatus([](const lgrtk::StatusEvent& e) { /* streaming, stale, reconnecting, ... */ });
@@ -89,15 +109,17 @@ rx.OnFix([&](const lgrtk::Fix& f) {
   ntrip.SetPosition(f);                                   // GGA for VRS mountpoints
   if (f.type != lgrtk::FixType::kRtkFixed) return;        // or weight by f.sigma_e/n/u_m
   double enh[3];
-  lv95->Project(f, enh, err);                             // microseconds; refuses other frames
+  lv95->Project(f, enh, err);                             // microseconds
 });
 rx.Start();
 ntrip.Start();
 ```
 
-Full programs: [examples/print_fixes.cc](examples/print_fixes.cc),
-[examples/ntrip_rover.cc](examples/ntrip_rover.cc). Use it from CMake with
-`find_package(lgrtk)` after `make install`, or with `FetchContent`:
+Complete programs: [examples/print_fixes.cc](examples/print_fixes.cc) and
+[examples/ntrip_rover.cc](examples/ntrip_rover.cc). `make docs` generates the API reference
+([entry page](docs/api.md)).
+
+Use it from CMake with `find_package(lgrtk)` after `make install`, or with `FetchContent`:
 
 ```cmake
 FetchContent_Declare(lgrtk GIT_REPOSITORY https://github.com/DennisRathgeb/lg290p-rtk GIT_TAG v0.2.0)
@@ -105,42 +127,28 @@ FetchContent_MakeAvailable(lgrtk)
 target_link_libraries(app PRIVATE lgrtk::lgrtk lgrtk::projection)
 ```
 
-## How it works
+## Running the daemon
 
-![data flow](docs/architecture.svg)
+`lgrtkd` owns the receiver and serves it system-wide:
 
-The I/O thread reads the port, the framer splits NMEA text from binary RTCM (checksums and
-CRC-24Q verified, resynchronising after noise), the parsers decode GGA, RMC, GST, `$PQTMEPE` and
-command replies, and the epoch assembler emits one `lgrtk::Fix` per epoch as soon as the
-sentence pattern it learnt is complete: latency is one sentence, not one epoch. Nothing on that
-path allocates.
-
-### The state machine
-
-![state machine](docs/state-machine.svg)
-
-| State | Meaning | Leaves when |
+| Output | Default | For |
 |---|---|---|
-| `opening` | opening the tty exclusively (`TIOCEXCL`) | opened / failed |
-| `identifying` | `$PQTMVERNO`; tries 460800, 921600, 115200, 230400, 9600 | firmware answers |
-| `configuring` | reads every managed setting, writes differences, saves, resets only if needed | all acknowledged |
-| `streaming` | epochs arrive | silence (→ `stale`) or port lost |
-| `stale` | port open, no epoch for three epoch periods (at least 500 ms) | data resumes |
-| `reconnecting` | port gone; backoff 250 ms → 5 s, immediately when the device reappears | port opens |
-| `fault` | the receiver refused a command; `Status().last_error` names it | `Stop()` |
+| gpsd JSON protocol | `127.0.0.1:2947` | `cgps`, `gpspipe`, QGIS, OpenCPN, Python `gps`; RTK fixed/float in TPV `status` |
+| raw byte tap | off | loggers, RTKLIB `str2str`, post-processing |
+| chrony SOCK refclock | off | system time from the receiver |
+| control socket | `/run/lgrtkd/control.sock` | `lgrtk ctl status`, `reset`, `apply-default` |
 
-### What a fix contains
+```sh
+cd packaging && makepkg -si               # Arch; other distributions: docs/daemon.md
+sudo systemctl enable --now lgrtkd
+lgrtk ctl status
+cgps                                      # or any other gpsd client
+```
 
-`lgrtk::Fix`: UTC time and date, host arrival time (`CLOCK_MONOTONIC`), latitude, longitude,
-ellipsoidal height and the receiver's geoid separation, **fix type** (none, single, DGNSS,
-RTK float, RTK fixed, …), **1-sigma east/north/up** from GST (or `$PQTMEPE`) with its source,
-horizontal velocity, HDOP/PDOP, satellites, **correction age** and station id, and a **frame tag**:
-`kAutonomous` (broadcast frame ≈ ITRF) or `kCorrected` (the frame of your corrections, e.g.
-CHTRS95 with swipos). A fix only counts as corrected while *your* corrections reach the
-receiver (an SBAS or PPP solution is not in your corrections' frame). The receiver cannot know
-that frame; you declare it in `lgrtk::FixProjector`, so a 0.8 m frame mix-up cannot happen
-silently. `Lg290pReceiver::Snapshot()` returns the latest fix together with its age and the
-driver state, so a poller always knows whether the position is current.
+It ships with a systemd unit (`Type=notify`, watchdog, hardened, own system user), a udev rule
+(`/dev/lg290p0`, ModemManager kept away) and a strict TOML configuration. Installation,
+configuration keys, the gpsd field mapping, chrony and troubleshooting are in
+[docs/daemon.md](docs/daemon.md).
 
 ## Command-line tool
 
@@ -155,51 +163,49 @@ lgrtk base survey-in SECONDS ACC | fixed X Y Z | rover
 lgrtk ntrip sourcetable HOST[:PORT]
 lgrtk ntrip run --host H --mount M --user U --password-file F
 lgrtk project --from EPSG:4937 --to EPSG:2056+5729 LAT LON H
+lgrtk ctl status | reset KIND | apply-default    talks to a running lgrtkd
 ```
 
-## Daemon: the receiver for every program
+Global options: `--port PATH` (default `/dev/ttyACM0` or `$LGRTK_PORT`) and `--baud N`;
+`lgrtk --help` shows everything.
 
-`lgrtkd` owns the receiver and serves it system-wide: the **gpsd JSON protocol** (so `cgps`,
-QGIS, OpenCPN and Python `gps` work unchanged, with RTK fixed/float in TPV `status`), a **raw
-tap** with the untouched NMEA + RTCM bytes, a **chrony** time source, and a control socket for
-`lgrtk ctl`. It ships with a systemd unit (`Type=notify`, watchdog, hardened), a udev rule
-(`/dev/lg290p0`) and a PKGBUILD.
+## Documentation
 
-```sh
-sudo systemctl enable --now lgrtkd
-lgrtk ctl status
-printf '?WATCH={"enable":true,"json":true};\n' | nc 127.0.0.1 2947
-```
-
-Configuration, the gpsd field mapping, chrony and troubleshooting: [docs/daemon.md](docs/daemon.md).
-
-## Project layout
+| Document | Contents |
+|---|---|
+| [docs/hardware.md](docs/hardware.md) | the receiver and the Waveshare board: pinout, messages, commands, antenna, measurements, troubleshooting |
+| [docs/architecture.md](docs/architecture.md) | layers, state machine, threading, fixes and frames, the daemon, testing |
+| [docs/daemon.md](docs/daemon.md) | installing, configuring and operating `lgrtkd` |
+| [docs/decisions.md](docs/decisions.md) | design decisions and their reasons |
+| [CHANGELOG.md](CHANGELOG.md) | release notes |
 
 | Path | Contents |
 |---|---|
-| `include/lgrtk/` | public headers (documented, `make docs`) |
-| `src/` | library; `src/daemon/` the daemon's internals (not installed) |
-| `apps/lgrtk/`, `apps/lgrtkd/` | CLI, daemon |
-| `packaging/` | systemd unit, udev rule, sysusers, example `lgrtkd.toml`, PKGBUILD |
-| `tests/` | GoogleTest suite; `tests/sim/` simulated LG290P on a pseudo-terminal and a fake NTRIP caster |
+| `include/lgrtk/` | public headers |
+| `src/` | the library; `src/daemon/` the daemon's internals (not installed) |
+| `apps/` | the `lgrtk` CLI and the `lgrtkd` daemon |
 | `examples/` | example programs |
-| `docs/` | [hardware guide](docs/hardware.md), [design](docs/design.md), [daemon](docs/daemon.md), [decisions](docs/decisions.md), plans ([M1](docs/plan.md), [M2](docs/plan-m2.md)), diagrams |
+| `tests/` | GoogleTest suite; `tests/sim/` the simulated receiver and fake caster |
+| `packaging/` | systemd unit, udev rule, sysusers, example configuration, PKGBUILD |
+| `tools/` | session recorder, lint helpers, git hooks |
 
 ## Development
 
-`make help` lists everything. `make setup` installs the git hook and runs the tests; `make check`
-runs format check, include guards, clang-tidy, tests and Doxygen (all must be clean, as in CI).
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+```sh
+make setup     # git hooks, build, tests
+make check     # format, include guards, shellcheck, clang-tidy, tests, Doxygen: what CI runs
+```
 
-## Status and roadmap
+`make help` lists every target. Conventions and the pull-request workflow are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
-- **v0.1.0**: library, CLI, NTRIP client, projection. Verified on the bench (identification,
-  streaming, stale-byte handling); RTK with a real caster pending the login.
-- **v0.2.0** (this): `lgrtkd` daemon (gpsd JSON, raw tap, chrony, control socket, `lgrtk ctl`),
-  systemd unit, udev rule, sysusers, PKGBUILD. Tested against the simulated receiver; the bench
-  test with `cgps` is next.
-- **later**: NTRIP over TLS, NTRIP server for an own base station, PPS time, `OnSatellites` in the
-  library (see [docs/decisions.md](docs/decisions.md) D29).
+## Status
+
+| Version | |
+|---|---|
+| **v0.1.0** | library, CLI, NTRIP client, projection; verified on the reference board |
+| **v0.2.0** | `lgrtkd` daemon, `lgrtk ctl`, systemd/udev/sysusers files, PKGBUILD; autonomous outdoor run on the reference board |
+| next | RTK with a live caster on hardware, NTRIP over TLS, NTRIP server upload for an own base station, PPS time, a satellite callback in the library |
 
 ## Licence
 

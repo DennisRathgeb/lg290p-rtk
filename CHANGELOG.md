@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Documentation reorganised: `docs/architecture.md` replaces the design notes and milestone
+  plans; README rewritten.
+- `tools/record-session.sh NAME [HOST MOUNT USER]`: NTRIP host is an argument, the password file
+  comes from `LGRTK_NTRIP_PASSWORD_FILE`, recordings go to `~/.local/share/lgrtk/recordings`.
+
 ## v0.2.0 (2026-11-10)
 
 The daemon: the receiver for every program on the machine.
@@ -18,8 +23,8 @@ The daemon: the receiver for every program on the machine.
 - Simulator sends GSA/GSV; end-to-end daemon test (gpsd client, raw tap, ctl, unplug/replug,
   SIGTERM) in CI.
 - `tools/record-session.sh`: record a session (raw bytes, gpsd reports, status) through lgrtkd.
-- First outdoor run (autonomous): 10 Hz, 22 satellites, GST with 3 decimals on firmware A06S.
-- README hero photo of the module with the Q39 antenna; board diagram and pinout.
+- `docs/hardware.md`: board diagram and pinout, outdoor measurements (10 Hz, up to 22
+  satellites, GST with 3 decimals on firmware A06S).
 
 ## v0.1.0 (2026-11-10)
 
