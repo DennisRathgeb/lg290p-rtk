@@ -2,11 +2,12 @@ name: ci
 on: [push, pull_request]
 jobs:
   build:
+    name: build + test (${{ matrix.os }}, ${{ matrix.cxx }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-22.04   # gcc 11.4, the Jetson floor
             cxx: g++-11
           - os: ubuntu-24.04
             cxx: g++
@@ -16,13 +17,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: deps
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libgtest-dev libproj-dev proj-data clang-format
-      - name: configure (sanitizers, -Werror)
-        run: CXX=${{ matrix.cxx }} cmake --preset dev
-      - name: build
-        run: cmake --build --preset dev
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libgtest-dev libproj-dev proj-data
+      - name: build (Debug, ASan/UBSan, -Werror)
+        run: CXX=${{ matrix.cxx }} make build
       - name: test
-        run: ctest --preset dev
-      - name: format
-        if: matrix.cxx == 'g++'
-        run: git ls-files '*.h' '*.cc' | xargs clang-format --dry-run --Werror
+        run: ctest --preset dev -j4
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: deps
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libgtest-dev libproj-dev doxygen shellcheck
+          pip install --user clang-format==22.1.8 clang-tidy==22.1.8
+      - name: format, include guards, shell
+        run: make lint
+      - name: clang-tidy
+        run: make tidy
+      - name: doxygen (warnings are errors)
+        run: make docs

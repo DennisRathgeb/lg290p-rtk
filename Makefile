@@ -36,8 +36,12 @@ lint: fmt-check ## fmt-check, include guards, shell scripts
 	  else echo "lint: shellcheck not installed, skipped"; fi
 
 tidy: build ## clang-tidy naming/style checks (uses the compile database of PRESET)
-	run-clang-tidy -quiet -p build/$(PRESET) -extra-arg=-Wno-unknown-warning-option \
-	  $$(git ls-files 'src/*.cc' 'apps/*.cc' 'tests/*.cc')
+	@files="$$(git ls-files 'src/*.cc' 'apps/*.cc' 'tests/*.cc')"; \
+	if command -v run-clang-tidy >/dev/null; then \
+	  run-clang-tidy -quiet -p build/$(PRESET) -extra-arg=-Wno-unknown-warning-option $$files; \
+	else \
+	  for f in $$files; do clang-tidy -quiet -p build/$(PRESET) -extra-arg=-Wno-unknown-warning-option "$$f" || exit 1; done; \
+	fi
 
 docs: ## API docs with Doxygen (fails on warnings): build/docs/html/index.html
 	@mkdir -p build/docs
