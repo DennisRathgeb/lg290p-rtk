@@ -28,6 +28,12 @@ The receiver and NTRIP threads only hand work to one event-loop thread, which se
 without blocking. A client that stops reading is disconnected when its 256 KiB buffer fills; it
 never slows the receiver or the other clients.
 
+**Bench (2026-11-10, Waveshare board, firmware A06S, indoors, `apply_config = false`):** lgrtkd
+identified the receiver at 460800 baud, served TPV and SKY at 10 Hz to a gpsd client (mode 1
+indoors, no fix), `lgrtk ctl status` reported `streaming` with 0 bad sentences, the raw tap carried
+the receiver bytes, and SIGTERM stopped it in about 0.2 s. The systemd unit, chrony and RTK
+through the daemon are not yet tested on hardware.
+
 ## Install
 
 **Arch Linux** (from the repository):
