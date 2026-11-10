@@ -159,11 +159,8 @@ std::string FormatFix(const Fix& f) {
   return buf;
 }
 
-/// Starts a receiver and waits until it streams (or fails).
-bool StartReceiver(Lg290pReceiver& rx, int timeout_s = 15) {
-  if (!rx.Start()) {
-    return false;
-  }
+/// Waits until `rx` streams; false on a fault, a timeout or Ctrl-C.
+bool WaitStreaming(Lg290pReceiver& rx, int timeout_s) {
   const auto end =
       std::chrono::steady_clock::now() + std::chrono::seconds(timeout_s);
   while (std::chrono::steady_clock::now() < end && !g_interrupted) {
@@ -181,6 +178,19 @@ bool StartReceiver(Lg290pReceiver& rx, int timeout_s = 15) {
   std::cerr << "lgrtk: receiver not ready (state " << lgrtk::ToString(st.state)
             << ")" << (st.last_error.empty() ? "" : ": " + st.last_error)
             << "\n";
+  return false;
+}
+
+/// Starts a receiver and waits until it streams. On failure the receiver is
+/// stopped again, so no callback runs after this returns false.
+bool StartReceiver(Lg290pReceiver& rx, int timeout_s = 15) {
+  if (!rx.Start()) {
+    return false;
+  }
+  if (WaitStreaming(rx, timeout_s)) {
+    return true;
+  }
+  rx.Stop();
   return false;
 }
 
@@ -202,8 +212,8 @@ int CmdProbe(Args& a, ReceiverOptions o) {
   if (a.Has()) {
     return Usage("probe: unexpected argument " + a.Peek());
   }
-  o.apply_config = false;
-  Lg290pReceiver rx(o);
+  // Everything the callbacks capture is declared before the receiver, so it
+  // outlives the I/O thread on every return path.
   std::optional<lgrtk::RawRecorder> rec;
   if (raw) {
     std::string err;
@@ -212,7 +222,6 @@ int CmdProbe(Args& a, ReceiverOptions o) {
       std::cerr << "lgrtk: " << err << "\n";
       return kRuntime;
     }
-    rx.OnRaw([&](std::span<const uint8_t> b) { rec->Write(b); });
   }
   std::mutex mu;
   std::map<std::string, int> types;
@@ -221,6 +230,11 @@ int CmdProbe(Args& a, ReceiverOptions o) {
   double first_utc = -1;
   double last_utc = -1;
   int backwards = 0;
+  o.apply_config = false;
+  Lg290pReceiver rx(o);
+  if (rec) {
+    rx.OnRaw([&](std::span<const uint8_t> b) { rec->Write(b); });
+  }
   rx.OnNmea([&](std::string_view line) {
     const auto body = lgrtk::nmea::Validate(line);
     std::string type(lgrtk::nmea::SentenceType(body));
@@ -315,9 +329,9 @@ int CmdWatch(Args& a, ReceiverOptions o) {
   if (a.Has()) {
     return Usage("watch: unexpected argument " + a.Peek());
   }
+  std::atomic<int> seen{0};
   o.apply_config = false;
   Lg290pReceiver rx(o);
-  std::atomic<int> seen{0};
   rx.OnFix([&](const Fix& f) {
     if (count > 0 && seen >= count) {
       return;
@@ -565,6 +579,22 @@ int CmdBase(Args& a, ReceiverOptions o) {
   return rc;
 }
 
+/// Stops an NTRIP client and its receiver when it goes out of scope.
+class StopBoth {
+ public:
+  StopBoth(Lg290pReceiver& rx, lgrtk::NtripClient& nc) : rx_(rx), nc_(nc) {}
+  StopBoth(const StopBoth&) = delete;
+  StopBoth& operator=(const StopBoth&) = delete;
+  ~StopBoth() {
+    nc_.Stop();
+    rx_.Stop();
+  }
+
+ private:
+  Lg290pReceiver& rx_;
+  lgrtk::NtripClient& nc_;
+};
+
 int CmdNtrip(Args& a, ReceiverOptions o) {
   const std::string op = a.Next();
   const bool v1 = a.Flag("--v1");
@@ -642,14 +672,15 @@ int CmdNtrip(Args& a, ReceiverOptions o) {
         std::fprintf(stderr, "[ntrip %s -> %s] %s\n", lgrtk::ToString(from),
                      lgrtk::ToString(to), why.c_str());
       });
+  // The receiver's OnFix uses `nc` and `nc` injects into `rx`: stop both
+  // threads before either object is destroyed, on every return path.
+  const StopBoth stop{rx, nc};
   if (!rx.Start() || !nc.Start()) {
     return kRuntime;
   }
   while (!g_interrupted) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
-  nc.Stop();
-  rx.Stop();
   return 0;
 }
 
