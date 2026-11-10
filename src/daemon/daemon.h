@@ -6,6 +6,8 @@
 #ifndef LGRTK_SRC_DAEMON_DAEMON_H_
 #define LGRTK_SRC_DAEMON_DAEMON_H_
 
+#include <signal.h>
+
 #include <memory>
 #include <string>
 
@@ -20,6 +22,10 @@
 #include "lgrtk/receiver.h"
 
 namespace lgrtk::daemon {
+
+/// SIGTERM and SIGINT: the signals that stop lgrtkd. Block them in every
+/// thread before Run(handle_signals = true).
+[[nodiscard]] sigset_t ShutdownSignals();
 
 /// The daemon. Start() binds and starts everything, Run() serves until
 /// Quit(), Stop() shuts the receiver and NTRIP down.

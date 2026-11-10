@@ -2,7 +2,6 @@
 #include "daemon/daemon.h"
 
 #include <poll.h>
-#include <signal.h>
 #include <sys/signalfd.h>
 #include <unistd.h>
 
@@ -31,6 +30,14 @@ void Log(const std::string& msg) { std::fprintf(stderr, "%s\n", msg.c_str()); }
 bool Active(State s) { return s == State::kStreaming || s == State::kStale; }
 
 }  // namespace
+
+sigset_t ShutdownSignals() {
+  sigset_t set;
+  sigemptyset(&set);
+  sigaddset(&set, SIGTERM);
+  sigaddset(&set, SIGINT);
+  return set;
+}
 
 Daemon::Daemon(DaemonConfig config) : cfg_(std::move(config)) {}
 
@@ -255,10 +262,7 @@ nlohmann::json Daemon::StatusJson() const {
 void Daemon::Run(bool handle_signals) {
   internal::UniqueFd sfd;
   if (handle_signals) {
-    sigset_t set;
-    sigemptyset(&set);
-    sigaddset(&set, SIGTERM);
-    sigaddset(&set, SIGINT);
+    const sigset_t set = ShutdownSignals();
     sfd.Reset(signalfd(-1, &set, SFD_NONBLOCK | SFD_CLOEXEC));
     if (sfd) {
       loop_.Add(sfd.Get(), POLLIN, [this, fd = sfd.Get()](short) {
