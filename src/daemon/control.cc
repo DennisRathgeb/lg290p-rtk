@@ -5,6 +5,8 @@
 
 #include <utility>
 
+#include "lgrtk/lg290p.h"
+
 namespace lgrtk::daemon {
 namespace {
 
@@ -69,8 +71,7 @@ void ControlServer::OnLine(ClientSet::Id id, std::string_view line) {
         reply = Fail(
             "factory reset is refused over the control socket; stop lgrtkd "
             "and run 'lgrtk reset factory --yes'");
-      } else if (kind == "hot" || kind == "warm" || kind == "cold" ||
-                 kind == "soft") {
+      } else if (lg290p::RestartByName(kind)) {
         reply = Reply(h_.reset(kind));
       } else {
         reply = Fail("reset kind must be hot, warm, cold or soft");

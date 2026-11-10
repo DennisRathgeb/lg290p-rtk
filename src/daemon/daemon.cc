@@ -73,18 +73,14 @@ bool Daemon::Start(std::string* err) {
     ControlHandlers h;
     h.status = [this] { return StatusJson(); };
     h.reset = [this](const std::string& kind) {
-      lg290p::Command cmd = lg290p::SoftwareReset();
-      if (kind == "hot") {
-        cmd = lg290p::Restart(lg290p::Start::kHot);
-      } else if (kind == "warm") {
-        cmd = lg290p::Restart(lg290p::Start::kWarm);
-      } else if (kind == "cold") {
-        cmd = lg290p::Restart(lg290p::Start::kCold);
+      auto cmd = lg290p::RestartByName(kind);
+      if (!cmd) {  // ControlServer passes only known kinds
+        return nlohmann::json{{kFieldError, "unknown reset kind " + kind}};
       }
       Log("control: reset " + kind);
       // Restarts do not answer; the receiver's state machine notices the
       // restart, so there is nothing to wait for here.
-      (void)rx_->Send(cmd);
+      (void)rx_->Send(std::move(*cmd));
       return nlohmann::json{{"sent", kind}};
     };
     h.apply_default = [this] {
