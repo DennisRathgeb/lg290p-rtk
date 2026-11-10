@@ -21,6 +21,7 @@ add_library(lgrtk
   src/nmea.cc
   src/epoch.cc
   src/lg290p.cc
+  src/serial.cc
 )
 add_library(lgrtk::lgrtk ALIAS lgrtk)
 target_include_directories(lgrtk PUBLIC

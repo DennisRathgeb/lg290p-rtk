@@ -21,3 +21,4 @@ call below is reversible; each says why. Decisions he made himself are in `desig
 | D14 | Pictures: own photos of the module (placeholders until Dennis takes them) + our SVG diagrams; vendor photos only linked | Waveshare/Quectel photos are copyrighted | — |
 | D15 | Firmware flashing out of scope | Quectel's flasher is Windows-only (QGNSS) | a Linux flasher protocol is documented |
 | D16 | On this laptop PROJ 9.9.0 was built from source into `~/.local` | `sudo` needed a password; Arch `proj` package is the clean alternative (`pacman -S proj`) | — |
+| D17 | Raw-stream recording lives in lgrtk (library `RawRecorder` on the `OnRaw` tap; daemon raw tap), not in ar-core | Dennis on issue #64: recording the raw stream is the RTK toolkit's job | — |
