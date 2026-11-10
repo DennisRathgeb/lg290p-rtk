@@ -10,6 +10,7 @@
 #include <string_view>
 
 #include "daemon/control_protocol.h"
+#include "internal/host_port.h"
 #include "lgrtk/receiver.h"
 
 namespace lgrtk::daemon {
@@ -50,10 +51,8 @@ struct DaemonConfig {
 /// cannot be read.
 [[nodiscard]] std::optional<std::string> ReadNtripPassword(
     const NtripSection& ntrip, std::string* err);
-/// Splits "host:port" or "[v6]:port"; false for an empty host or a port
-/// outside 1..65535.
-[[nodiscard]] bool ParseHostPort(std::string_view s, std::string* host,
-                                 int* port);
+/// "host:port" or "[v6]:port" (see internal::ParseHostPort).
+using internal::ParseHostPort;
 
 }  // namespace lgrtk::daemon
 
