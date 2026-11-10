@@ -19,6 +19,7 @@ add_library(lgrtk
   src/version.cc
   src/framer.cc
   src/nmea.cc
+  src/epoch.cc
 )
 add_library(lgrtk::lgrtk ALIAS lgrtk)
 target_include_directories(lgrtk PUBLIC
