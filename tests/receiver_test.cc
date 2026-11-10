@@ -220,9 +220,8 @@ TEST(ReceiverTest, InjectReachesDevice) {
   for (int i = 0; i < 5; ++i) {
     ASSERT_TRUE(rx.Inject(frame));
   }
-  for (int i = 0; i < 50 && sim.RtcmReceived().size() < 5 * frame.size(); ++i) {
-    std::this_thread::sleep_for(20ms);
-  }
+  EXPECT_TRUE(test::WaitFor(
+      [&] { return sim.RtcmReceived().size() >= 5 * frame.size(); }, 1s));
   EXPECT_EQ(sim.RtcmReceived().size(), 5 * frame.size());
 }
 
@@ -262,9 +261,9 @@ TEST(ReceiverTest, MissingPortKeepsRetrying) {
   Lg290pReceiver rx(o);
   obs.Attach(rx);
   ASSERT_TRUE(rx.Start());
-  std::this_thread::sleep_for(200ms);
+  ASSERT_TRUE(test::WaitFor(
+      [&] { return rx.Status().state == State::kReconnecting; }, 1s));
   const auto st = rx.Status();
-  EXPECT_EQ(st.state, State::kReconnecting);
   EXPECT_NE(st.last_error.find("does-not-exist"), std::string::npos);
 }
 

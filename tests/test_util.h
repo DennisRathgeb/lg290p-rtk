@@ -2,9 +2,11 @@
 #ifndef LGRTK_TESTS_TEST_UTIL_H_
 #define LGRTK_TESTS_TEST_UTIL_H_
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include "lgrtk/framer.h"
@@ -41,6 +43,20 @@ inline std::vector<uint8_t> Rtcm(const std::vector<uint8_t>& payload) {
 
 inline std::vector<uint8_t> Bytes(std::string_view s) {
   return {s.begin(), s.end()};
+}
+
+/// Polls `pred` every 10 ms until it holds or `timeout` passed; returns its
+/// last value.
+template <class Pred>
+bool WaitFor(Pred pred, std::chrono::milliseconds timeout) {
+  const auto end = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < end) {
+    if (pred()) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return pred();
 }
 
 }  // namespace lgrtk::test

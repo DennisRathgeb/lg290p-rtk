@@ -9,12 +9,14 @@
 #include <vector>
 
 #include "sim/fake_caster.h"
+#include "test_util.h"
 
 namespace lgrtk {
 namespace {
 
 using namespace std::chrono_literals;
 using test::FakeCaster;
+using test::WaitFor;
 
 struct VecSink : CorrectionSink {
   std::mutex mu;
@@ -57,18 +59,6 @@ Fix SomeFix() {
   f.hdop = 0.8f;
   f.utc_s = 36000.0;
   return f;
-}
-
-template <class Pred>
-bool WaitFor(Pred p, std::chrono::milliseconds t) {
-  const auto end = std::chrono::steady_clock::now() + t;
-  while (std::chrono::steady_clock::now() < end) {
-    if (p()) {
-      return true;
-    }
-    std::this_thread::sleep_for(10ms);
-  }
-  return p();
 }
 
 TEST(NtripTest, V2ChunkedStreamsToSink) {

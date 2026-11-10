@@ -17,6 +17,7 @@ add_executable(lgrtk_tests
   lg290p_test.cc
   serial_test.cc
   receiver_test.cc
+  local_frame_test.cc
   projection_test.cc
   ntrip_test.cc
   net_test.cc
