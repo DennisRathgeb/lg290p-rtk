@@ -61,6 +61,7 @@ if(LGRTK_BUILD_DAEMON)
   include(cmake/DaemonDeps.cmake)
   add_library(lgrtkd_core STATIC
     src/daemon/config.cc
+    src/daemon/gpsd_json.cc
   )
   target_include_directories(lgrtkd_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(lgrtkd_core
