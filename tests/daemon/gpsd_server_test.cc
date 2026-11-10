@@ -307,6 +307,11 @@ TEST(EventLoopTest, ClientLimitRefusesExtraClients) {
   lt.Sync([&] { n = set->Count(); });
   EXPECT_EQ(n, 2U);
   a.Close();
+  for (int i = 0; i < 200 && n != 1; ++i) {  // until the server saw it
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    lt.Sync([&] { n = set->Count(); });
+  }
+  ASSERT_EQ(n, 1U);
   LineClient d;  // room again after a client left
   ASSERT_TRUE(d.ConnectTcp(port));
   EXPECT_FALSE(d.ClosedByPeer(300));
