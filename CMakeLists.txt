@@ -31,6 +31,7 @@ add_library(lgrtk::lgrtk ALIAS lgrtk)
 target_include_directories(lgrtk PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
+target_include_directories(lgrtk PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(lgrtk PUBLIC Threads::Threads PRIVATE $<BUILD_INTERFACE:lgrtk_warnings>)
 
 # Optional PROJ-based projection component.

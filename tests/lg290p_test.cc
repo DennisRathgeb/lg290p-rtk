@@ -57,6 +57,15 @@ TEST(Lg290pTest, ReplyExpectations) {
   EXPECT_FALSE(SetMessageRate("GST", 1).needs_reset);
 }
 
+TEST(Lg290pTest, RestartByName) {
+  EXPECT_EQ(RestartByName("hot")->text, Restart(Start::kHot).text);
+  EXPECT_EQ(RestartByName("warm")->text, Restart(Start::kWarm).text);
+  EXPECT_EQ(RestartByName("cold")->text, Restart(Start::kCold).text);
+  EXPECT_EQ(RestartByName("soft")->text, SoftwareReset().text);
+  EXPECT_FALSE(RestartByName("factory"));
+  EXPECT_FALSE(RestartByName("lukewarm"));
+}
+
 TEST(Lg290pTest, RangesRejected) {
   EXPECT_FALSE(SetFixRate(49));
   EXPECT_FALSE(SetFixRate(1001));

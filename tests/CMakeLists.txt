@@ -10,6 +10,7 @@ include(GoogleTest)
 
 add_executable(lgrtk_tests
   version_test.cc
+  internal_test.cc
   framer_test.cc
   nmea_test.cc
   epoch_test.cc
@@ -21,7 +22,7 @@ add_executable(lgrtk_tests
   sim/fake_caster.cc
   sim/sim_lg290p.cc
 )
-target_include_directories(lgrtk_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(lgrtk_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(lgrtk_tests PRIVATE util lgrtk::lgrtk GTest::gtest_main lgrtk_warnings)
 if(LGRTK_HAVE_PROJ)
   target_link_libraries(lgrtk_tests PRIVATE lgrtk::projection)

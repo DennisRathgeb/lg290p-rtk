@@ -245,6 +245,22 @@ Command Restart(Start s) {
   }
   return Make("PQTMHOT", "", true);
 }
+std::optional<Command> RestartByName(std::string_view kind) {
+  if (kind == "hot") {
+    return Restart(Start::kHot);
+  }
+  if (kind == "warm") {
+    return Restart(Start::kWarm);
+  }
+  if (kind == "cold") {
+    return Restart(Start::kCold);
+  }
+  if (kind == "soft") {
+    return SoftwareReset();
+  }
+  return std::nullopt;
+}
+
 Command RestoreDefaults() {
   return Make("PQTMRESTOREPAR", "PQTMRESTOREPAR", true, true);
 }
