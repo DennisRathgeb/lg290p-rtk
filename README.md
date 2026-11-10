@@ -8,6 +8,8 @@ that survives unplugging, receiver resets and wrong baud rates.
 <!-- Photo: replace with docs/images/module-top.jpg once taken (see docs/images/README.md) -->
 > 📷 *Photo of the Waveshare LG290P GNSS RTK Module with the Q39 helical antenna goes here.*
 
+![What is connected to what on the Waveshare LG290P board](docs/images/board.svg)
+
 | | |
 |---|---|
 | Receiver | Quectel **LG290P (03)**: GPS, GLONASS, Galileo, BeiDou, QZSS, NavIC; L1/L2/L5/E6; 1040 channels; RTK 0.8 cm + 1 ppm; 10 Hz default, 20 Hz max |

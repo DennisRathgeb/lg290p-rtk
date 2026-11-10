@@ -1,14 +1,11 @@
-# Photos to take
+# Images
 
-Vendor product photos are copyrighted, so this repository uses its own. Wanted (JPEG, about
-1600 px wide, neutral background, good light):
-
-| File | Shot | Used in |
+| File | What | Source |
 |---|---|---|
-| `module-top.jpg` | the board with the Q39 antenna screwed on and the USB-C cable plugged in | README (hero) |
-| `board-top.jpg` | the bare board from above, labels readable | docs/hardware.md |
-| `board-antenna.jpg` | board + antenna on the bench, side view | docs/hardware.md |
-| `header.jpg` | close-up of the pin header (UART2/3, PPS, RTK, EVENT, RST) | docs/hardware.md |
+| `board.svg` | connection diagram of the Waveshare board (not to scale) | drawn for this repo from Waveshare's published [schematic](https://files.waveshare.com/wiki/LG290P-GNSS-RTK-Module/manual/LG290P%20GNSS%20RTK%20Module.pdf) |
+| `module-top.jpg` | *to add:* the board with the Q39 antenna and the USB-C cable plugged in (README hero) | own photo |
 
-After adding a photo, replace the matching `📷` placeholder line in the README or the hardware
-guide with `![...](docs/images/<file>)`.
+Vendor product photos are copyrighted and not copied here; the docs link to
+[Waveshare's product page](https://www.waveshare.com/lg290p-gnss-rtk-module.htm) instead. Own
+photos: JPEG, about 1600 px wide. After adding `module-top.jpg`, replace the `📷` placeholder in
+the README with `![...](docs/images/module-top.jpg)`.

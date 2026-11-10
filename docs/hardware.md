@@ -20,9 +20,11 @@ marked *reported*.
 
 ## The Waveshare LG290P GNSS RTK Module
 
-<!-- Photos: docs/images/board-top.jpg, docs/images/board-antenna.jpg, docs/images/header.jpg -->
-> 📷 *Photos of the board (top, with antenna and USB, pin header) go here; see
-> [images/README.md](images/README.md).*
+![What is connected to what on the Waveshare board](images/board.svg)
+
+*Drawn from Waveshare's [board schematic](https://files.waveshare.com/wiki/LG290P-GNSS-RTK-Module/manual/LG290P%20GNSS%20RTK%20Module.pdf);
+product photos are on [Waveshare's product page](https://www.waveshare.com/lg290p-gnss-rtk-module.htm)
+and [wiki](https://www.waveshare.com/wiki/LG290P_GNSS_RTK_Module).*
 
 - 33 × 33 mm, powered by USB-C (5 V), SMA antenna connector, RTC backup battery header.
 - A **WCH CH343** USB-serial bridge on the receiver's UART1. Linux's stock `cdc-acm` driver binds
@@ -30,8 +32,38 @@ marked *reported*.
   at the same time.
 - The host baud is forwarded to the receiver's UART: open the port at the receiver's speed
   (460800 by default). `lgrtk` detects other speeds automatically.
-- Pin header: UART2 and UART3 (3.3 V), PPS, RTK status, EVENT, RST.
+- Two 9-pin headers (P1, P2) and two 4-pin connectors (J1, J2), pinout below. UART2/UART3 are
+  3.3 V logic; I²C is reserved by Quectel and not supported.
+- LEDs: red = 3.3 V power, green = RTK status (`RTK_STAT`), yellow = 1PPS. Key1 resets the
+  receiver.
 - Firmware on our board: `LG290P03AANR01A06S`, built 2025/09/18 (**bench**).
+
+### Pinout (from the Waveshare schematic)
+
+Signal names are the receiver's: `RXD` is the receiver's **input**, so it connects to the host's
+TX. `VCC` is the 5 V rail (USB 5 V through a Schottky diode; it can also feed the board).
+
+| Pin | P1 | P2 |
+|---|---|---|
+| 1 | VCC (5 V) | EVENT (input) |
+| 2 | GND | 1PPS (output) |
+| 3 | 3V3 | RST (active low) |
+| 4 | Power_EN (100 kΩ pull-up; low switches the receiver off) | TXD3 |
+| 5 | RXD2 | RXD3 |
+| 6 | TXD2 | GND |
+| 7 | SCL (reserved) | 3V3 |
+| 8 | SDA (reserved) | GND |
+| 9 | RTK_STAT (output) | VCC (5 V) |
+
+| Pin | J1 (UART3) | J2 (I²C, reserved) |
+|---|---|---|
+| 1 | RXD3 | SCL |
+| 2 | TXD3 | SDA |
+| 3 | 3V3 | 3V3 |
+| 4 | GND | GND |
+
+J3 is the USB-C port, J4 the SMA antenna jack (3.3 V antenna bias), J5 the RTC backup battery
+(`V_BCKP`; keeps almanac and time for a fast hot start).
 
 ### What it sends out of the box (bench, 2026-11-10, firmware A06S, indoors)
 
