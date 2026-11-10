@@ -39,6 +39,11 @@ inline constexpr int kPollSliceMs = 50;
 /// including a size that does not fit in size_t.
 [[nodiscard]] bool ParseChunkSize(std::string_view line, size_t& size) noexcept;
 
+/// Reads the status code of an HTTP status line ("HTTP/1.1 200 OK").
+/// False when the line is not one.
+[[nodiscard]] bool ParseHttpStatus(std::string_view status_line,
+                                   int& status) noexcept;
+
 /// HTTP/1.1 chunked transfer decoding, incremental: feed the body as it
 /// arrives, get the payload in pieces.
 class Dechunker {

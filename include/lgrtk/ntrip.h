@@ -12,6 +12,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 
 #include "lgrtk/correction_sink.h"
@@ -103,6 +104,12 @@ class NtripClient {
   void SetState(NtripState s, const std::string& reason);
   /// One connection; returns when it ends. Sets state/err on failure.
   void Session();
+  /// Forwards corrections from the connected socket `fd` until the
+  /// connection ends, stalls or Stop() is called. `early` holds bytes that
+  /// arrived with the response header.
+  void StreamLoop(int fd, bool chunked, std::string_view early);
+  /// Records `why` as the last error.
+  void Fail(const std::string& why);
   bool BackoffWait();
   bool StopRequested() const { return stop_.load(std::memory_order_relaxed); }
 

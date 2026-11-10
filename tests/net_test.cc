@@ -79,5 +79,21 @@ TEST(ParseChunkSizeTest, Values) {
   EXPECT_FALSE(ParseChunkSize(";ext", n));
 }
 
+TEST(ParseHttpStatusTest, StatusLines) {
+  int status = 0;
+  ASSERT_TRUE(ParseHttpStatus("HTTP/1.1 200 OK", status));
+  EXPECT_EQ(status, 200);
+  ASSERT_TRUE(ParseHttpStatus("HTTP/1.0 401 Unauthorized", status));
+  EXPECT_EQ(status, 401);
+  ASSERT_TRUE(ParseHttpStatus("HTTP/1.1 404", status));
+  EXPECT_EQ(status, 404);
+  EXPECT_FALSE(ParseHttpStatus("ICY 200 OK", status));
+  EXPECT_FALSE(ParseHttpStatus("SOURCETABLE 200 OK", status));
+  EXPECT_FALSE(ParseHttpStatus("HTTP/1.1 abc", status));
+  EXPECT_FALSE(ParseHttpStatus("HTTP/x 200 OK", status));
+  EXPECT_FALSE(ParseHttpStatus("", status));
+  EXPECT_EQ(status, 404);  // unchanged on failure
+}
+
 }  // namespace
 }  // namespace lgrtk::internal

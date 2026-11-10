@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "internal/clock.h"
+#include "internal/text.h"
 
 namespace lgrtk::internal {
 
@@ -145,6 +146,33 @@ bool ParseChunkSize(std::string_view line, size_t& size) noexcept {
     return false;
   }
   size = v;
+  return true;
+}
+
+bool ParseHttpStatus(std::string_view status_line, int& status) noexcept {
+  // "HTTP/" major "." minor SP code [SP reason]
+  constexpr std::string_view kPrefix = "HTTP/";
+  if (!status_line.starts_with(kPrefix)) {
+    return false;
+  }
+  status_line.remove_prefix(kPrefix.size());
+  const size_t space = status_line.find(' ');
+  const std::string_view version = status_line.substr(0, space);
+  const size_t dot = version.find('.');
+  int major = 0;
+  int minor = 0;
+  if (space == std::string_view::npos || dot == std::string_view::npos ||
+      !ParseNumber(version.substr(0, dot), major) ||
+      !ParseNumber(version.substr(dot + 1), minor)) {
+    return false;
+  }
+  std::string_view rest = status_line.substr(space + 1);
+  rest = rest.substr(0, rest.find(' '));
+  int code = 0;
+  if (!ParseNumber(rest, code)) {
+    return false;
+  }
+  status = code;
   return true;
 }
 
