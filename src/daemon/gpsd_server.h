@@ -42,6 +42,7 @@ class GpsdServer {
 
  private:
   void OnLine(ClientSet::Id id, std::string_view line);
+  void OnCommand(ClientSet::Id id, std::string_view command);
   void ToWatchers(bool json, bool nmea, std::string_view data);
   [[nodiscard]] std::string PollJson() const;
 

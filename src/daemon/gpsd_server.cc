@@ -38,9 +38,12 @@ bool GpsdServer::Listen(const std::string& host, int port, std::string* err) {
 }
 
 void GpsdServer::OnLine(ClientSet::Id id, std::string_view line) {
-  if (line.empty()) {
-    return;
+  for (const std::string_view command : SplitGpsdCommands(line)) {
+    OnCommand(id, command);
   }
+}
+
+void GpsdServer::OnCommand(ClientSet::Id id, std::string_view line) {
   const auto cmd = ParseGpsdCommand(line);
   if (!cmd) {
     clients_.Send(id, ErrorJson("Invalid request: " + std::string(line)));

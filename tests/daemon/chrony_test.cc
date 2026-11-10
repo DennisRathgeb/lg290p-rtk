@@ -66,10 +66,12 @@ TEST(ChronyTest, NoSampleWithoutFix) {
   EXPECT_FALSE(MakeChronySample(f, *FixUnixNs(NoonFix())));
 }
 
-TEST(ChronyTest, NoSampleWhenClockFarOff) {
-  // More than 0.5 s apart: the second of the sentence is ambiguous.
-  EXPECT_FALSE(
-      MakeChronySample(NoonFix(), *FixUnixNs(NoonFix()) + 2000000000LL));
+TEST(ChronyTest, SampleEvenWhenClockFarOff) {
+  // A board without RTC boots far off; chrony (makestep) decides, not us.
+  const int64_t arrival = *FixUnixNs(NoonFix()) - 400LL * 86400 * 1000000000;
+  auto s = MakeChronySample(NoonFix(), arrival);
+  ASSERT_TRUE(s);
+  EXPECT_NEAR(s->offset, 400.0 * 86400, 1e-3);
 }
 
 TEST(ChronyTest, SendsToSocket) {

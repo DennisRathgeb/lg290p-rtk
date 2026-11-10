@@ -44,7 +44,7 @@ struct DaemonConfig {
 [[nodiscard]] std::optional<DaemonConfig> LoadConfig(const std::string& path,
                                                      std::string* err);
 /// The NTRIP password: from `password_file` if set, else from
-/// `$CREDENTIALS_DIRECTORY/ntrip-password` (systemd `LoadCredential=`) if it
+/// `$CREDENTIALS_DIRECTORY/ntrip-password` (systemd `ImportCredential=`) if it
 /// exists, else "". Trailing CR/LF is stripped. nullopt if a named file
 /// cannot be read.
 [[nodiscard]] std::optional<std::string> ReadNtripPassword(

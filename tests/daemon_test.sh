@@ -16,6 +16,7 @@ DIR=$(mktemp -d)
 free_port() { python3 -I -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])'; }
 GPSD_PORT=$(free_port)
 RAW_PORT=$(free_port)
+NTRIP_PORT=$(free_port)  # nothing listens: the client keeps retrying
 
 coproc SIMPROC { "$SIM"; }
 read -r TTY <&"${SIMPROC[0]}"
@@ -40,6 +41,11 @@ device_name = "/dev/sim"
 listen = "127.0.0.1:$RAW_PORT"
 [control]
 sock = "$DIR/control.sock"
+[ntrip]
+enabled = true
+host = "127.0.0.1"
+port = $NTRIP_PORT
+mountpoint = "TEST"
 EOF
 
 "$LGRTKD" --config "$DIR/lgrtkd.toml" --check-config >/dev/null || fail "check-config"
@@ -102,6 +108,15 @@ PY
 out=$("$LGRTK" ctl --socket "$DIR/control.sock" status) || fail "ctl status: $out"
 grep -q "state: streaming" <<<"$out" || fail "ctl status: $out"
 grep -q "gpsd_clients:" <<<"$out" || fail "ctl status: $out"
+grep -q "ntrip_state:" <<<"$out" || fail "ctl status without NTRIP: $out"
+
+# apply-default restarts the receiver and the NTRIP client while fixes flow.
+for _ in 1 2 3 4 5; do
+  "$LGRTK" ctl --socket "$DIR/control.sock" apply-default >/dev/null || fail "ctl apply-default"
+  sleep 0.1
+done
+"$LGRTK" ctl --socket "$DIR/control.sock" reset hot >/dev/null || fail "ctl reset hot"
+out=$(gpsd_client tpv) || fail "no fixes after apply-default: $out"
 
 # Unplug: a watching client sees the device deactivated and a mode-0 TPV,
 # then fixes again after replug.

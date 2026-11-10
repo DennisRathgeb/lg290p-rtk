@@ -147,7 +147,9 @@ void Daemon::StartDevices() {
   rx_->OnStatus([this](const StatusEvent& ev) {
     loop_.Post([this, ev] { OnState(ev); });
   });
-  rx_->Start();
+  // The NTRIP client exists before the receiver thread starts and outlives
+  // it (StopDevices), because the receiver's OnFix reads ntrip_ on its own
+  // thread.
   if (cfg_.ntrip.enabled) {
     NtripOptions o;
     o.host = cfg_.ntrip.host;
@@ -165,19 +167,24 @@ void Daemon::StartDevices() {
                 ToString(to) + (why.empty() ? "" : " (" + why + ")"));
           });
         });
+  }
+  rx_->Start();
+  if (ntrip_) {
     ntrip_->Start();
   }
 }
 
 void Daemon::StopDevices() {
+  // Stop both threads before destroying either: the receiver thread reads
+  // ntrip_ (OnFix), and NTRIP injects into *rx_.
   if (ntrip_) {
     ntrip_->Stop();
-    ntrip_.reset();
   }
   if (rx_) {
     rx_->Stop();
-    rx_.reset();
   }
+  ntrip_.reset();
+  rx_.reset();
 }
 
 void Daemon::Stop() {

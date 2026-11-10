@@ -26,9 +26,8 @@ struct ChronySample {
 };
 
 /// A sample for `fix` read at `arrival_realtime_ns` (CLOCK_REALTIME).
-/// nullopt without a date or position, or when the system clock is more than
-/// 0.5 s off (chrony needs the clock roughly set; the NMEA second would be
-/// ambiguous).
+/// nullopt without a date or a position. Any offset is reported: a system
+/// without RTC may boot far off, and chrony's `makestep` decides.
 [[nodiscard]] std::optional<ChronySample> MakeChronySample(
     const Fix& fix, int64_t arrival_realtime_ns);
 

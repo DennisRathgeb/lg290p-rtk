@@ -5,7 +5,7 @@ else on the machine:
 
 | Output | Default | For |
 |---|---|---|
-| **gpsd JSON protocol** on TCP | `127.0.0.1:2947` | `cgps`, `gpsmon`, QGIS, OpenCPN, Python `gps`, anything that speaks to gpsd |
+| **gpsd JSON protocol** on TCP | `127.0.0.1:2947` | `cgps`, `gpspipe -w`, QGIS, OpenCPN, Python `gps`, anything that reads gpsd JSON (not `gpsmon`, which needs gpsd's raw mode) |
 | **Raw tap** on TCP | off | the untouched receiver bytes (NMEA + RTCM): loggers, RTKLIB `str2str`, post-processing |
 | **chrony** SOCK refclock | off | system time from the receiver's UTC |
 | **Control socket** | `/run/lgrtkd/control.sock` | `lgrtk ctl status / reset / apply-default` |
@@ -55,7 +55,7 @@ Then:
 sudo systemd-sysusers                 # creates the "lgrtk" user (member of uucp/dialout)
 sudo udevadm control --reload && sudo udevadm trigger   # /dev/lg290p0 appears
 sudo systemctl enable --now lgrtkd
-journalctl -u lgrtkd -f               # state changes and client connections
+journalctl -u lgrtkd -f               # receiver and NTRIP state changes
 sudo usermod -aG lgrtk "$USER"        # to use `lgrtk ctl` without sudo (log in again)
 ```
 
@@ -63,8 +63,8 @@ sudo usermod -aG lgrtk "$USER"        # to use `lgrtk ctl` without sudo (log in 
 |---|---|
 | `/usr/bin/lgrtkd` | the daemon |
 | `/etc/lgrtk/lgrtkd.toml` | configuration (below) |
-| `/etc/lgrtk/ntrip-password` | NTRIP password, one line, mode 0600, owned by root |
-| `/usr/lib/systemd/system/lgrtkd.service` | `Type=notify`, watchdog, hardened, runs as `lgrtk` |
+| `/etc/credstore/ntrip-password` | NTRIP password (optional), one line, mode 0600, owned by root; systemd passes it in (`ImportCredential=`) |
+| `/usr/lib/systemd/system/lgrtkd.service` | `Type=notify`, watchdog, hardened, runs as `lgrtk`; loads `cdc_acm`/`usbserial` first so a receiver plugged in later is allowed |
 | `/usr/lib/udev/rules.d/99-lg290p.rules` | `/dev/lg290p0` for the CH343 (`1a86:55d3`), ModemManager off |
 | `/usr/lib/sysusers.d/lgrtk.conf` | the `lgrtk` system user |
 
@@ -104,12 +104,15 @@ mountpoint = "MSM_GISGEO_LV95LHN95"  # example; list them: lgrtk ntrip sourcetab
 user = "your-user"
 ```
 
-and the password in `/etc/lgrtk/ntrip-password`. Never put it in the TOML file: the daemon never
-logs it, and the unit hands it over through `LoadCredential=`.
+and the password in `/etc/credstore/ntrip-password` (`sudo install -m600 /dev/stdin
+/etc/credstore/ntrip-password`, type it, Ctrl-D). Never put it in the TOML file: the daemon never
+logs it, and the unit hands it over through `ImportCredential=`.
 
 ## gpsd protocol
 
-Supported requests: `?VERSION;`, `?WATCH={…};` (`enable`, `json`, `nmea`), `?POLL;`, `?DEVICES;`.
+Supported requests: `?VERSION;`, `?WATCH={…};` (`enable`, `json`, `nmea`; a WATCH object enables
+watching unless it says `"enable":false`), `?POLL;`, `?DEVICES;`; several on one line work
+(`?VERSION;?DEVICES;`). At most 64 clients per socket.
 Reports: `VERSION` on connect, `DEVICES`, `WATCH`, `TPV`, `GST`, `SKY`, `POLL`, `ERROR`. Raw and
 binary watch modes, `?DEVICE=` (changing speed or mode) and PPS reports are not supported: the
 receiver is configured through `lgrtk ctl` instead.
@@ -168,10 +171,12 @@ refclock SOCK /run/chrony.lgrtk.sock refid GNSS offset 0.0 delay 0.2 noselect
 ```
 
 The sample is the epoch's UTC against the system time at which its last sentence was read, so it
-includes the receiver's output latency (tens of ms at 460800 baud). Calibrate `offset` against a
-good NTP source (`chronyc sourcestats`) before dropping `noselect`; for sub-millisecond time use
-the PPS pin (not yet supported). chronyd creates the socket; lgrtkd must be allowed to write to
-it (chrony runs as root or `chrony`: check its permissions). Untested on hardware so far.
+includes the receiver's output latency (tens of ms at 460800 baud). Samples are sent whatever the
+offset, so a board without RTC that boots far off can be set by chrony (`makestep`). Calibrate
+`offset` against a good NTP source (`chronyc sourcestats`) before dropping `noselect`; for
+sub-millisecond time use the PPS pin (not yet supported). chronyd creates the socket; lgrtkd must
+be allowed to write to it (chrony runs as root or `chrony`: check its permissions). Untested on
+hardware so far.
 
 ## Control
 

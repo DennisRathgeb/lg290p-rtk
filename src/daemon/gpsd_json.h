@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "lgrtk/fix.h"
 
@@ -46,6 +47,12 @@ struct Watch {
 void ApplyWatch(const nlohmann::json& arg, Watch* w);
 /// ERROR object.
 [[nodiscard]] std::string ErrorJson(std::string_view message);
+
+/// Splits a request line into its commands at ';' outside JSON strings and
+/// objects ("?VERSION;?DEVICES;" -> two); each keeps its ';'. Blank pieces
+/// are dropped.
+[[nodiscard]] std::vector<std::string_view> SplitGpsdCommands(
+    std::string_view line);
 
 /// A client command line, e.g. `?WATCH={"enable":true};`.
 struct GpsdCommand {

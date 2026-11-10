@@ -6,8 +6,8 @@ pkgdesc="Driver, CLI and gpsd-compatible daemon for the Quectel LG290P RTK GNSS 
 arch=('x86_64' 'aarch64')
 url="https://github.com/DennisRathgeb/lg290p-rtk"
 license=('MIT')
-depends=('proj' 'gcc-libs' 'glibc')
-makedepends=('cmake' 'ninja' 'git' 'nlohmann-json' 'tomlplusplus' 'gtest' 'python')
+depends=('proj' 'tomlplusplus' 'gcc-libs' 'glibc')
+makedepends=('cmake' 'ninja' 'git' 'nlohmann-json' 'gtest' 'python')
 optdepends=('chrony: GNSS time through the SOCK refclock')
 backup=('etc/lgrtk/lgrtkd.toml')
 source=("git+https://github.com/DennisRathgeb/lg290p-rtk.git#tag=v${pkgver}")

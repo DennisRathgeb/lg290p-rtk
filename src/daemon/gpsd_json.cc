@@ -216,6 +216,8 @@ void ApplyWatch(const nlohmann::json& arg, Watch* w) {
       *out = it->get<bool>();
     }
   };
+  // gpsd: a WATCH object enables watching unless it says otherwise.
+  w->enable = true;
   get("enable", &w->enable);
   get("json", &w->json);
   get("nmea", &w->nmea);
@@ -226,6 +228,44 @@ std::string ErrorJson(std::string_view message) {
   o["class"] = "ERROR";
   o["message"] = std::string(message);
   return Line(o);
+}
+
+std::vector<std::string_view> SplitGpsdCommands(std::string_view line) {
+  std::vector<std::string_view> out;
+  auto push = [&out](std::string_view piece) {
+    if (piece.find_first_not_of(" \t;\r") != std::string_view::npos) {
+      out.push_back(piece);
+    }
+  };
+  int depth = 0;
+  bool in_string = false;
+  bool escaped = false;
+  size_t start = 0;
+  for (size_t i = 0; i < line.size(); ++i) {
+    const char c = line[i];
+    if (in_string) {
+      if (escaped) {
+        escaped = false;
+      } else if (c == '\\') {
+        escaped = true;
+      } else if (c == '"') {
+        in_string = false;
+      }
+    } else if (c == '"') {
+      in_string = true;
+    } else if (c == '{' || c == '[') {
+      ++depth;
+    } else if ((c == '}' || c == ']') && depth > 0) {
+      --depth;
+    } else if (c == ';' && depth == 0) {
+      push(line.substr(start, i + 1 - start));
+      start = i + 1;
+    }
+  }
+  if (start < line.size()) {
+    push(line.substr(start));
+  }
+  return out;
 }
 
 std::optional<GpsdCommand> ParseGpsdCommand(std::string_view line) {

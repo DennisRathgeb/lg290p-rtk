@@ -195,6 +195,29 @@ TEST(GpsdJsonTest, ApplyWatch) {
   EXPECT_FALSE(w.enable);
 }
 
+TEST(GpsdJsonTest, WatchObjectWithoutEnableEnables) {
+  Watch w;
+  ApplyWatch(json::parse(R"({"json":true})"), &w);
+  EXPECT_TRUE(w.enable);
+  EXPECT_TRUE(w.json);
+  Watch off;
+  ApplyWatch(json(), &off);  // bare ?WATCH; reports, changes nothing
+  EXPECT_FALSE(off.enable);
+}
+
+TEST(GpsdJsonTest, SplitsSeveralCommandsOnOneLine) {
+  EXPECT_EQ(SplitGpsdCommands("?VERSION;?DEVICES;"),
+            (std::vector<std::string_view>{"?VERSION;", "?DEVICES;"}));
+  EXPECT_EQ(
+      SplitGpsdCommands(R"(?WATCH={"enable":true,"device":"a;b"};?POLL;)"),
+      (std::vector<std::string_view>{
+          R"(?WATCH={"enable":true,"device":"a;b"};)", "?POLL;"}));
+  EXPECT_EQ(SplitGpsdCommands("?POLL"),
+            (std::vector<std::string_view>{"?POLL"}));
+  EXPECT_TRUE(SplitGpsdCommands("").empty());
+  EXPECT_TRUE(SplitGpsdCommands(" ; ;").empty());
+}
+
 TEST(GpsdJsonTest, EveryObjectEndsCrLf) {
   for (const std::string& s :
        {VersionJson(), DevicesJson("d", true, 1), TpvJson(RtkFix(), "d"),

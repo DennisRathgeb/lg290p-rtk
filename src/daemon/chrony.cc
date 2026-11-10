@@ -15,7 +15,6 @@ namespace {
 
 constexpr int kMagic = 0x534f434b;
 constexpr int64_t kNsPerS = 1000000000;
-constexpr int64_t kMaxOffsetNs = 500000000;  // NMEA second must be unambiguous
 
 static_assert(sizeof(ChronySample) == 40, "chrony sock_sample layout");
 
@@ -31,9 +30,6 @@ std::optional<ChronySample> MakeChronySample(const Fix& fix,
     return std::nullopt;
   }
   const int64_t diff = *fix_ns - arrival_realtime_ns;
-  if (diff > kMaxOffsetNs || diff < -kMaxOffsetNs) {
-    return std::nullopt;
-  }
   ChronySample s{};
   s.tv.tv_sec = static_cast<time_t>(arrival_realtime_ns / kNsPerS);
   s.tv.tv_usec =

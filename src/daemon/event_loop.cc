@@ -231,12 +231,13 @@ int BoundPort(int fd) {
 // ---- ClientSet ----
 
 ClientSet::ClientSet(EventLoop* loop, Handlers handlers, size_t cap_bytes,
-                     bool read_lines, size_t max_line)
+                     bool read_lines, size_t max_line, size_t max_clients)
     : loop_(loop),
       h_(std::move(handlers)),
       cap_(cap_bytes),
       read_lines_(read_lines),
-      max_line_(max_line) {}
+      max_line_(max_line),
+      max_clients_(max_clients) {}
 
 ClientSet::~ClientSet() {
   for (int fd : listeners_) {
@@ -260,7 +261,20 @@ void ClientSet::Accept(int listen_fd) {
     const int fd =
         accept4(listen_fd, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
     if (fd < 0) {
+      if (errno == EMFILE || errno == ENFILE || errno == ENOBUFS ||
+          errno == ENOMEM) {
+        // Out of descriptors: the listener stays readable, so stop watching
+        // it (no busy loop) until a client leaves.
+        accept_paused_ = true;
+        for (const int l : listeners_) {
+          loop_->Modify(l, 0);
+        }
+      }
       return;  // EAGAIN, or a transient error: try on the next event
+    }
+    if (clients_.size() >= max_clients_) {
+      close(fd);
+      continue;
     }
     const Id id = next_id_++;
     clients_[id] = std::make_unique<Client>(Client{fd, {}, {}});
@@ -367,6 +381,12 @@ void ClientSet::Close(Id id) {
   loop_->Remove(it->second->fd);
   close(it->second->fd);
   clients_.erase(it);
+  if (accept_paused_) {
+    accept_paused_ = false;
+    for (const int l : listeners_) {
+      loop_->Modify(l, POLLIN);
+    }
+  }
   if (h_.on_close) {
     h_.on_close(id);
   }

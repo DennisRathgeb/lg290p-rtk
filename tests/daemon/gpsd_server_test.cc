@@ -184,6 +184,17 @@ TEST_F(GpsdServerTest, CommandsSplitAcrossReads) {
   EXPECT_FALSE(c.ReadLine(200));
 }
 
+TEST_F(GpsdServerTest, SeveralCommandsOnOneLine) {
+  LineClient c;
+  Connect(&c);
+  c.Write("?VERSION;?DEVICES;\n");
+  auto a = c.ReadLine();
+  auto b = c.ReadLine();
+  ASSERT_TRUE(a && b);
+  EXPECT_EQ(json::parse(*a)["class"], "VERSION");
+  EXPECT_EQ(json::parse(*b)["class"], "DEVICES");
+}
+
 TEST_F(GpsdServerTest, MalformedCommandGetsError) {
   LineClient c;
   Connect(&c);
@@ -270,6 +281,36 @@ TEST_F(GpsdServerSmallCapTest, SlowClientIsDropped) {
   EXPECT_EQ(Clients(), 1U);
   Publish(SomeFix(99999));
   EXPECT_TRUE(good.ReadUntil("\"TPV\""));
+}
+
+TEST(EventLoopTest, ClientLimitRefusesExtraClients) {
+  LoopThread lt;
+  std::unique_ptr<ClientSet> set;
+  int port = 0;
+  lt.Sync([&] {
+    set = std::make_unique<ClientSet>(lt.Loop(), ClientSet::Handlers{}, 1024,
+                                      true, 4096, /*max_clients=*/2);
+    std::string err;
+    const int fd = ListenTcp("127.0.0.1", 0, &err);
+    ASSERT_GE(fd, 0) << err;
+    port = BoundPort(fd);
+    set->AddListener(fd);
+  });
+  LineClient a;
+  LineClient b;
+  LineClient c;
+  ASSERT_TRUE(a.ConnectTcp(port));
+  ASSERT_TRUE(b.ConnectTcp(port));
+  ASSERT_TRUE(c.ConnectTcp(port));  // the kernel accepts; we close it
+  EXPECT_TRUE(c.ClosedByPeer());
+  size_t n = 0;
+  lt.Sync([&] { n = set->Count(); });
+  EXPECT_EQ(n, 2U);
+  a.Close();
+  LineClient d;  // room again after a client left
+  ASSERT_TRUE(d.ConnectTcp(port));
+  EXPECT_FALSE(d.ClosedByPeer(300));
+  lt.Sync([&] { set.reset(); });
 }
 
 TEST(EventLoopTest, PostFromOtherThread) {

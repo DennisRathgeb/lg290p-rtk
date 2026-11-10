@@ -2,6 +2,11 @@
 Description=LG290P RTK GNSS daemon (gpsd protocol)
 Documentation=https://github.com/DennisRathgeb/lg290p-rtk/blob/main/docs/daemon.md
 After=network.target
+# DeviceAllow= only resolves device groups (ttyACM, ttyUSB) that exist when the
+# unit starts, so load the serial drivers first: the receiver may be plugged
+# in later.
+Wants=modprobe@cdc_acm.service modprobe@usbserial.service
+After=modprobe@cdc_acm.service modprobe@usbserial.service
 
 [Service]
 Type=notify
@@ -14,9 +19,10 @@ Group=lgrtk
 RuntimeDirectory=lgrtkd
 RuntimeDirectoryMode=0755
 UMask=0007
-# NTRIP password: put it in @LGRTK_SYSCONFDIR@/lgrtk/ntrip-password (mode 0600, root)
-# and leave ntrip.password_file empty; systemd hands it to the daemon.
-LoadCredential=ntrip-password:@LGRTK_SYSCONFDIR@/lgrtk/ntrip-password
+# NTRIP password (optional): put it in /etc/credstore/ntrip-password (one line,
+# mode 0600, root) and leave ntrip.password_file empty; systemd hands it to the
+# daemon. A missing file is not an error (unlike LoadCredential=).
+ImportCredential=ntrip-password
 # Hardening
 NoNewPrivileges=yes
 ProtectSystem=strict

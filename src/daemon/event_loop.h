@@ -89,8 +89,10 @@ class ClientSet {
     std::function<void(Id)> on_close;                   ///< gone
   };
   /// `read_lines` false discards everything clients send.
+  /// At most `max_clients` are connected; further ones are closed at once.
   ClientSet(EventLoop* loop, Handlers handlers, size_t cap_bytes = 256 * 1024,
-            bool read_lines = true, size_t max_line = 4096);
+            bool read_lines = true, size_t max_line = 4096,
+            size_t max_clients = 64);
   ~ClientSet();
   ClientSet(const ClientSet&) = delete;
   ClientSet& operator=(const ClientSet&) = delete;
@@ -123,6 +125,8 @@ class ClientSet {
   size_t cap_;
   bool read_lines_;
   size_t max_line_;
+  size_t max_clients_;
+  bool accept_paused_ = false;  // out of file descriptors
   std::vector<int> listeners_;
   std::map<Id, std::unique_ptr<Client>> clients_;
   Id next_id_ = 1;

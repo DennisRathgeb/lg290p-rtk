@@ -23,6 +23,18 @@ jobs:
       - name: test
         run: ctest --preset dev -j4
 
+  tsan:
+    name: ThreadSanitizer (all tests incl. daemon end-to-end)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: deps
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libgtest-dev libproj-dev proj-data nlohmann-json3-dev
+      - name: build
+        run: cmake --preset tsan && cmake --build --preset tsan
+      - name: test
+        run: ctest --preset tsan -j4
+
   lint:
     runs-on: ubuntu-24.04
     steps:
