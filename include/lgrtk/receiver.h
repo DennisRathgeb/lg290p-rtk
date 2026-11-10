@@ -6,11 +6,14 @@
 /// The LG290P driver: an explicit state machine on its own I/O thread.
 ///
 /// @verbatim
-///  kDisconnected -> kOpening -> kIdentifying -> kConfiguring -> kStreaming <-> kStale
-///        ^             | fail        | no reply at any baud        |            |
-///        |             v             v                             v            v
-///        +-------- kReconnecting <---+-- port vanished / I/O error-+------------+
-///                                     kFault (a command was refused; waits for Stop)
+///  kDisconnected -> kOpening -> kIdentifying -> kConfiguring -> kStreaming <->
+///  kStale
+///        ^             | fail        | no reply at any baud        | | | v v
+///        v            v
+///        +-------- kReconnecting <---+-- port vanished / I/O
+///        error-+------------+
+///                                     kFault (a command was refused; waits for
+///                                     Stop)
 /// @endverbatim
 ///
 /// Every transition is reported through OnStatus. Fixes arrive through
@@ -74,13 +77,14 @@ struct ReceiverOptions {
   int baud = 460800;                  ///< tried first (LG290P factory default)
   /// Tried after `baud` when the receiver does not answer.
   std::vector<int> baud_candidates{460800, 921600, 115200, 230400, 9600};
-  lg290p::ReceiverConfig config = lg290p::DefaultRoverConfig();  ///< desired settings
-  bool apply_config = true;    ///< read back and apply `config`
-  int stale_after_ms = 500;    ///< no epoch for this long -> kStale
-  int backoff_min_ms = 250;    ///< first reconnect delay
-  int backoff_max_ms = 5000;   ///< reconnect delay cap
-  int command_timeout_ms = 1000;  ///< wait for a reply
-  int command_retries = 2;        ///< extra attempts before kFault
+  lg290p::ReceiverConfig config =
+      lg290p::DefaultRoverConfig();  ///< desired settings
+  bool apply_config = true;          ///< read back and apply `config`
+  int stale_after_ms = 500;          ///< no epoch for this long -> kStale
+  int backoff_min_ms = 250;          ///< first reconnect delay
+  int backoff_max_ms = 5000;         ///< reconnect delay cap
+  int command_timeout_ms = 1000;     ///< wait for a reply
+  int command_retries = 2;           ///< extra attempts before kFault
 };
 
 /// Snapshot for status displays.
@@ -92,11 +96,11 @@ struct ReceiverStatus {
   uint64_t bytes = 0;                  ///< bytes read
   uint64_t epochs = 0;                 ///< fixes emitted
   uint64_t reconnects = 0;             ///< successful re-opens after a loss
-  uint64_t rtcm_injected = 0;          ///< correction bytes written to the receiver
-  uint64_t inject_dropped = 0;         ///< correction bytes refused (queue full)
-  StreamFramer::Counters framer;       ///< frame statistics
-  int64_t last_fix_age_ns = -1;        ///< -1 before the first fix
-  std::string last_error;              ///< most recent problem
+  uint64_t rtcm_injected = 0;     ///< correction bytes written to the receiver
+  uint64_t inject_dropped = 0;    ///< correction bytes refused (queue full)
+  StreamFramer::Counters framer;  ///< frame statistics
+  int64_t last_fix_age_ns = -1;   ///< -1 before the first fix
+  std::string last_error;         ///< most recent problem
 };
 
 /// Writes the raw receiver byte stream to a file (for post-processing:
@@ -104,7 +108,8 @@ struct ReceiverStatus {
 class RawRecorder {
  public:
   /// Opens (truncates) `path`.
-  static std::optional<RawRecorder> Open(const std::string& path, std::string& err);
+  static std::optional<RawRecorder> Open(const std::string& path,
+                                         std::string& err);
   RawRecorder(RawRecorder&& o) noexcept;
   RawRecorder& operator=(RawRecorder&& o) noexcept;
   RawRecorder(const RawRecorder&) = delete;
@@ -113,7 +118,7 @@ class RawRecorder {
   /// Appends bytes (buffered).
   void Write(std::span<const uint8_t> bytes) noexcept;
   /// Bytes written so far.
-  [[nodiscard]] uint64_t bytes() const noexcept { return bytes_; }
+  [[nodiscard]] uint64_t Bytes() const noexcept { return bytes_; }
 
  private:
   explicit RawRecorder(std::FILE* f) : f_(f) {}
@@ -131,11 +136,21 @@ class Lg290pReceiver final : public CorrectionSink {
   Lg290pReceiver(const Lg290pReceiver&) = delete;
   Lg290pReceiver& operator=(const Lg290pReceiver&) = delete;
 
-  void OnFix(std::function<void(const Fix&)> cb) { on_fix_ = std::move(cb); }  ///< every epoch
-  void OnStatus(std::function<void(const StatusEvent&)> cb) { on_status_ = std::move(cb); }  ///< transitions
-  void OnNmea(std::function<void(std::string_view)> cb) { on_nmea_ = std::move(cb); }  ///< every sentence
-  void OnRtcm(std::function<void(std::span<const uint8_t>)> cb) { on_rtcm_ = std::move(cb); }  ///< RTCM out (raw obs, base)
-  void OnRaw(std::function<void(std::span<const uint8_t>)> cb) { on_raw_ = std::move(cb); }  ///< every byte read
+  void OnFix(std::function<void(const Fix&)> cb) {
+    on_fix_ = std::move(cb);
+  }  ///< every epoch
+  void OnStatus(std::function<void(const StatusEvent&)> cb) {
+    on_status_ = std::move(cb);
+  }  ///< transitions
+  void OnNmea(std::function<void(std::string_view)> cb) {
+    on_nmea_ = std::move(cb);
+  }  ///< every sentence
+  void OnRtcm(std::function<void(std::span<const uint8_t>)> cb) {
+    on_rtcm_ = std::move(cb);
+  }  ///< RTCM out (raw obs, base)
+  void OnRaw(std::function<void(std::span<const uint8_t>)> cb) {
+    on_raw_ = std::move(cb);
+  }  ///< every byte read
 
   /// Starts the I/O thread. False if already running.
   bool Start();
@@ -170,7 +185,8 @@ class Lg290pReceiver final : public CorrectionSink {
   void OnFrame(const Frame& f, int64_t t_arrival);
   /// Sends `cmd` and waits for its reply. Returns false on port failure;
   /// `reply` stays empty on timeout.
-  bool Execute(const lg290p::Command& cmd, std::optional<nmea::OwnedReply>& reply);
+  bool Execute(const lg290p::Command& cmd,
+               std::optional<nmea::OwnedReply>& reply);
   void DrainInject();
   void ServeQueue();
   void FailPendingQueue();

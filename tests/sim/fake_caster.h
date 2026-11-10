@@ -26,10 +26,12 @@ class FakeCaster {
   FakeCaster(const FakeCaster&) = delete;
   FakeCaster& operator=(const FakeCaster&) = delete;
 
-  int port() const { return port_; }
-  int connections() const { return connections_; }
-  std::vector<std::string> Requests() const;  ///< request headers per connection
-  std::string ClientBytes() const;             ///< everything clients sent after the headers
+  int Port() const { return port_; }
+  int Connections() const { return connections_; }
+  std::vector<std::string> Requests()
+      const;  ///< request headers per connection
+  std::string ClientBytes()
+      const;  ///< everything clients sent after the headers
   /// The RTCM frame the caster sends repeatedly.
   static std::vector<uint8_t> Frame();
 

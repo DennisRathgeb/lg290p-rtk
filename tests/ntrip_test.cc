@@ -33,7 +33,7 @@ struct VecSink : CorrectionSink {
 NtripOptions Opts(const FakeCaster& c, int version = 2) {
   NtripOptions o;
   o.host = "127.0.0.1";
-  o.port = c.port();
+  o.port = c.Port();
   o.mountpoint = "NALPS";
   o.user = "dennis";
   o.password = "s3cret-pw";
@@ -63,7 +63,9 @@ template <class Pred>
 bool WaitFor(Pred p, std::chrono::milliseconds t) {
   const auto end = std::chrono::steady_clock::now() + t;
   while (std::chrono::steady_clock::now() < end) {
-    if (p()) return true;
+    if (p()) {
+      return true;
+    }
     std::this_thread::sleep_for(10ms);
   }
   return p();
@@ -78,12 +80,15 @@ TEST(NtripTest, V2ChunkedStreamsToSink) {
   EXPECT_EQ(c.Status().state, NtripState::kStreaming);
   {
     std::lock_guard lk(sink.mu);
-    for (const auto& f : sink.frames) EXPECT_EQ(f, FakeCaster::Frame());
+    for (const auto& f : sink.frames) {
+      EXPECT_EQ(f, FakeCaster::Frame());
+    }
   }
   const auto req = caster.Requests().at(0);
   EXPECT_NE(req.find("GET /NALPS HTTP/1.1"), std::string::npos);
   EXPECT_NE(req.find("Ntrip-Version: Ntrip/2.0"), std::string::npos);
-  EXPECT_NE(req.find("Authorization: Basic ZGVubmlzOnMzY3JldC1wdw=="), std::string::npos);
+  EXPECT_NE(req.find("Authorization: Basic ZGVubmlzOnMzY3JldC1wdw=="),
+            std::string::npos);
   EXPECT_NE(req.find("User-Agent: NTRIP lgrtk/"), std::string::npos);
 }
 
@@ -93,7 +98,8 @@ TEST(NtripTest, V1IcyResponse) {
   NtripClient c(Opts(caster, 1), sink);
   ASSERT_TRUE(c.Start());
   ASSERT_TRUE(WaitFor([&] { return sink.Count() >= 3; }, 2s));
-  EXPECT_NE(caster.Requests().at(0).find("GET /NALPS HTTP/1.0"), std::string::npos);
+  EXPECT_NE(caster.Requests().at(0).find("GET /NALPS HTTP/1.0"),
+            std::string::npos);
 }
 
 TEST(NtripTest, SendsGgaPeriodically) {
@@ -109,15 +115,20 @@ TEST(NtripTest, SendsGgaPeriodically) {
       [&] {
         const std::string b = caster.ClientBytes();
         size_t n = 0;
-        for (size_t p = b.find("$GPGGA"); p != std::string::npos; p = b.find("$GPGGA", p + 1)) ++n;
+        for (size_t p = b.find("$GPGGA"); p != std::string::npos;
+             p = b.find("$GPGGA", p + 1)) {
+          ++n;
+        }
         return n >= 3;
       },
       3s));
   const std::string b = caster.ClientBytes();
-  EXPECT_NE(b.find("$GPGGA,100000.00,4637.8000000,N,00846.8000000,E,1,20,0.8,1950.900,M,49.100,M,,*"),
+  EXPECT_NE(b.find("$GPGGA,100000.00,4637.8000000,N,00846.8000000,E,1,20,0.8,"
+                   "1950.900,M,49.100,M,,*"),
             std::string::npos)
       << b;
-  EXPECT_NE(caster.Requests().at(0).find("Ntrip-GGA: $GPGGA"), std::string::npos);
+  EXPECT_NE(caster.Requests().at(0).find("Ntrip-GGA: $GPGGA"),
+            std::string::npos);
 }
 
 TEST(NtripTest, NoPositionWaitsBeforeConnecting) {
@@ -127,8 +138,9 @@ TEST(NtripTest, NoPositionWaitsBeforeConnecting) {
   o.send_gga = true;
   NtripClient c(o, sink);
   ASSERT_TRUE(c.Start());
-  ASSERT_TRUE(WaitFor([&] { return c.Status().state == NtripState::kNoPosition; }, 1s));
-  EXPECT_EQ(caster.connections(), 0);
+  ASSERT_TRUE(
+      WaitFor([&] { return c.Status().state == NtripState::kNoPosition; }, 1s));
+  EXPECT_EQ(caster.Connections(), 0);
   c.SetPosition(SomeFix());
   ASSERT_TRUE(WaitFor([&] { return sink.Count() >= 1; }, 2s));
 }
@@ -138,9 +150,10 @@ TEST(NtripTest, AuthFailureStops) {
   VecSink sink;
   NtripClient c(Opts(caster), sink);
   ASSERT_TRUE(c.Start());
-  ASSERT_TRUE(WaitFor([&] { return c.Status().state == NtripState::kAuthFailed; }, 2s));
+  ASSERT_TRUE(
+      WaitFor([&] { return c.Status().state == NtripState::kAuthFailed; }, 2s));
   std::this_thread::sleep_for(500ms);
-  EXPECT_EQ(caster.connections(), 1);  // no hammering
+  EXPECT_EQ(caster.Connections(), 1);  // no hammering
   EXPECT_EQ(c.Status().http_status, 401);
 }
 
@@ -149,7 +162,8 @@ TEST(NtripTest, ReconnectsAfterDrop) {
   VecSink sink;
   NtripClient c(Opts(caster), sink);
   ASSERT_TRUE(c.Start());
-  ASSERT_TRUE(WaitFor([&] { return caster.connections() >= 2 && sink.Count() >= 2; }, 3s));
+  ASSERT_TRUE(WaitFor(
+      [&] { return caster.Connections() >= 2 && sink.Count() >= 2; }, 3s));
   EXPECT_GE(c.Status().connects, 2u);
 }
 
@@ -167,10 +181,12 @@ TEST(NtripTest, StalledWhenSilent) {
   ASSERT_TRUE(WaitFor(
       [&] {
         std::lock_guard lk(mu);
-        return std::find(seen.begin(), seen.end(), NtripState::kStalled) != seen.end();
+        return std::find(seen.begin(), seen.end(), NtripState::kStalled) !=
+               seen.end();
       },
       2s));
-  ASSERT_TRUE(WaitFor([&] { return caster.connections() >= 2; }, 2s));  // reconnects
+  ASSERT_TRUE(
+      WaitFor([&] { return caster.Connections() >= 2; }, 2s));  // reconnects
 }
 
 TEST(NtripTest, PasswordNotInStatusOrErrors) {
@@ -184,7 +200,8 @@ TEST(NtripTest, PasswordNotInStatusOrErrors) {
     reasons += r;
   });
   ASSERT_TRUE(c.Start());
-  ASSERT_TRUE(WaitFor([&] { return c.Status().state == NtripState::kAuthFailed; }, 2s));
+  ASSERT_TRUE(
+      WaitFor([&] { return c.Status().state == NtripState::kAuthFailed; }, 2s));
   c.Stop();
   EXPECT_EQ(c.Status().last_error.find("s3cret"), std::string::npos);
   EXPECT_EQ(reasons.find("s3cret"), std::string::npos);
@@ -193,7 +210,11 @@ TEST(NtripTest, PasswordNotInStatusOrErrors) {
 
 TEST(NtripTest, BuildGgaFormat) {
   const std::string g = BuildGga(SomeFix());
-  EXPECT_EQ(g.rfind("$GPGGA,100000.00,4637.8000000,N,00846.8000000,E,1,20,0.8,1950.900,M,49.100,M,,*", 0), 0u) << g;
+  EXPECT_EQ(g.rfind("$GPGGA,100000.00,4637.8000000,N,00846.8000000,E,1,20,0.8,"
+                    "1950.900,M,49.100,M,,*",
+                    0),
+            0u)
+      << g;
   EXPECT_TRUE(g.ends_with("\r\n"));
 }
 

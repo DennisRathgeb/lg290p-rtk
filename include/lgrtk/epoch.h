@@ -23,7 +23,8 @@ class EpochAssembler {
  public:
   /// Feeds one NMEA sentence ("$...*HH", checksum checked). Returns true and
   /// fills `out` when an epoch closed.
-  bool Feed(std::string_view nmea_line, int64_t t_arrival_ns, Fix& out) noexcept;
+  bool Feed(std::string_view nmea_line, int64_t t_arrival_ns,
+            Fix& out) noexcept;
   /// Closes the pending epoch (on stale data or stop); true if one was open.
   bool Flush(Fix& out) noexcept;
   /// Forgets everything (after a reconnect); keeps the sequence counter.
@@ -40,7 +41,6 @@ class EpochAssembler {
   uint8_t expected_ = 0;  // sentence types of the previous complete epoch
   bool emitted_ = false;  // the pending epoch was already emitted
   bool open_ = false;     // an epoch is pending
-  int64_t last_t_ = 0;
   float last_pdop_ = 0.0f;
   int32_t last_date_ = 0;
   uint32_t seq_ = 0;

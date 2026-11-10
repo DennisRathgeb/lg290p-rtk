@@ -15,8 +15,9 @@ namespace {
 using test::Nmea;
 
 std::string Gga(const char* utc, int q = 1, const char* age = "") {
-  return Nmea(std::string("GNGGA,") + utc + ",4637.80000000,N,00846.80000000,E," +
-              std::to_string(q) + ",20,0.80,1950.000,M,49.100,M," + age + "," +
+  return Nmea(std::string("GNGGA,") + utc +
+              ",4637.80000000,N,00846.80000000,E," + std::to_string(q) +
+              ",20,0.80,1950.000,M,49.100,M," + age + "," +
               (age[0] ? "0042" : ""));
 }
 std::string Rmc(const char* utc) {
@@ -24,7 +25,8 @@ std::string Rmc(const char* utc) {
               ",A,4637.80000000,N,00846.80000000,E,1.944,090.00,101126,,,A,V");
 }
 std::string Gst(const char* utc) {
-  return Nmea(std::string("GNGST,") + utc + ",0.5,0.03,0.02,10.0,0.020,0.010,0.040");
+  return Nmea(std::string("GNGST,") + utc +
+              ",0.5,0.03,0.02,10.0,0.020,0.010,0.040");
 }
 
 struct Feeder {
@@ -84,7 +86,8 @@ TEST(EpochTest, ClosesWithoutWaitingWhenComplete) {
   r.Feed(Gga("100000.000"));
   r.Feed(Rmc("100000.000"));
   r.Feed(Gst("100000.000"));
-  EXPECT_TRUE(r.Feed(Gga("100000.100")));  // closes epoch 1 (pattern still unknown)
+  EXPECT_TRUE(
+      r.Feed(Gga("100000.100")));  // closes epoch 1 (pattern still unknown)
   EXPECT_FALSE(r.Feed(Rmc("100000.100")));
   EXPECT_TRUE(r.Feed(Gst("100000.100")));  // pattern learnt: complete now
   ASSERT_EQ(r.fixes.size(), 2u);
@@ -145,7 +148,9 @@ TEST(EpochTest, ReplayCaptureGivesTenHz) {
   ASSERT_TRUE(in);
   Feeder r;
   std::string line;
-  while (std::getline(in, line)) r.Feed(line);
+  while (std::getline(in, line)) {
+    r.Feed(line);
+  }
   // 30 s at 10 Hz, indoors without a fix.
   EXPECT_GE(r.fixes.size(), 295u);
   EXPECT_LE(r.fixes.size(), 305u);

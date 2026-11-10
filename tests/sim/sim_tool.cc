@@ -11,7 +11,7 @@
 int main(int argc, char** argv) {
   const int baud = argc > 1 ? std::atoi(argv[1]) : 460800;
   lgrtk::test::SimLg290p sim(baud);
-  std::cout << sim.path() << std::endl;
+  std::cout << sim.Path() << std::endl;
   std::string line;
   while (std::getline(std::cin, line)) {
   }

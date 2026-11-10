@@ -47,8 +47,9 @@ std::vector<uint8_t> Rtcm1005() {
 
 TEST(FramerTest, Crc24qKnownVector) {
   const std::string s = "123456789";
-  EXPECT_EQ(Crc24q(std::span(reinterpret_cast<const uint8_t*>(s.data()), s.size())),
-            0xCDE703u);
+  EXPECT_EQ(
+      Crc24q(std::span(reinterpret_cast<const uint8_t*>(s.data()), s.size())),
+      0xCDE703u);
 }
 
 TEST(FramerTest, SplitsAcrossEveryByteBoundary) {
@@ -71,13 +72,14 @@ TEST(FramerTest, ResyncsAfterGarbage) {
   StreamFramer fr;
   Collected c;
   const std::string gga = Nmea("GNGGA,003508.200,,,,,0,00,99.99,,M,,M,,");
-  std::vector<uint8_t> data = {0x00, 0xFF, 0x13, 'x', 'y', 0xD3, 0x00};  // includes a fake RTCM start
+  std::vector<uint8_t> data = {0x00, 0xFF, 0x13, 'x',
+                               'y',  0xD3, 0x00};  // includes a fake RTCM start
   const auto line = Bytes(gga + "\r\n");
   data.insert(data.end(), line.begin(), line.end());
   FeedAll(fr, data, c);
   ASSERT_EQ(c.nmea.size(), 1u);
   EXPECT_EQ(c.nmea[0], gga);
-  EXPECT_GT(fr.counters().skipped_bytes, 0u);
+  EXPECT_GT(fr.Stats().skipped_bytes, 0u);
 }
 
 TEST(FramerTest, DollarInsideRtcmPayload) {
@@ -101,7 +103,7 @@ TEST(FramerTest, BadCrcCounted) {
   f.insert(f.end(), line.begin(), line.end());
   FeedAll(fr, f, c);
   EXPECT_EQ(c.rtcm.size(), 0u);
-  EXPECT_EQ(fr.counters().bad_rtcm, 1u);
+  EXPECT_EQ(fr.Stats().bad_rtcm, 1u);
   EXPECT_EQ(c.nmea.size(), 1u);  // the following sentence survives
 }
 
@@ -110,7 +112,7 @@ TEST(FramerTest, BadNmeaChecksumCounted) {
   Collected c;
   FeedAll(fr, Bytes("$GNGGA,1,,,,,0,00,,,M,,M,,*00\r\n"), c);
   EXPECT_EQ(c.nmea.size(), 0u);
-  EXPECT_EQ(fr.counters().bad_nmea, 1u);
+  EXPECT_EQ(fr.Stats().bad_nmea, 1u);
 }
 
 TEST(FramerTest, LongPqtmLineAccepted) {
@@ -127,7 +129,7 @@ TEST(FramerTest, OversizeLineDroppedAndCounted) {
   const std::string big = "$GNTXT," + std::string(400, 'a') + "\r\n";
   const std::string gga = Nmea("GNGGA,1,,,,,0,00,,,M,,M,,");
   FeedAll(fr, Bytes(big + gga + "\r\n"), c);
-  EXPECT_EQ(fr.counters().oversize, 1u);
+  EXPECT_EQ(fr.Stats().oversize, 1u);
   ASSERT_EQ(c.nmea.size(), 1u);
   EXPECT_EQ(c.nmea[0], gga);
 }

@@ -66,16 +66,21 @@ void EpochAssembler::StartEpoch(double utc_s) noexcept {
 
 bool EpochAssembler::Emit(Fix& out) noexcept {
   out = pending_;
-  if (out.date_ymd == 0) out.date_ymd = last_date_;
+  if (out.date_ymd == 0) {
+    out.date_ymd = last_date_;
+  }
   out.pdop = last_pdop_;
   out.seq = seq_++;
   emitted_ = true;
   return true;
 }
 
-bool EpochAssembler::Feed(std::string_view line, int64_t t_arrival_ns, Fix& out) noexcept {
+bool EpochAssembler::Feed(std::string_view line, int64_t t_arrival_ns,
+                          Fix& out) noexcept {
   const std::string_view body = nmea::Validate(line);
-  if (body.empty()) return false;
+  if (body.empty()) {
+    return false;
+  }
   const std::string_view type = nmea::SentenceType(body);
 
   uint8_t bit = 0;
@@ -86,26 +91,38 @@ bool EpochAssembler::Feed(std::string_view line, int64_t t_arrival_ns, Fix& out)
   std::optional<nmea::Epe> epe;
   std::optional<nmea::Zda> zda;
   if (type == "GGA") {
-    if (!(gga = nmea::ParseGga(body))) return false;
+    if (!(gga = nmea::ParseGga(body))) {
+      return false;
+    }
     bit = kGga;
     utc = gga->utc_s;
   } else if (type == "RMC") {
-    if (!(rmc = nmea::ParseRmc(body))) return false;
+    if (!(rmc = nmea::ParseRmc(body))) {
+      return false;
+    }
     bit = kRmc;
     utc = rmc->utc_s;
   } else if (type == "GST") {
-    if (!(gst = nmea::ParseGst(body))) return false;
+    if (!(gst = nmea::ParseGst(body))) {
+      return false;
+    }
     bit = kGst;
     utc = gst->utc_s;
   } else if (type == "ZDA") {
-    if (!(zda = nmea::ParseZda(body))) return false;
+    if (!(zda = nmea::ParseZda(body))) {
+      return false;
+    }
     bit = kZda;
     utc = zda->utc_s;
   } else if (type == "PQTMEPE") {
-    if (!(epe = nmea::ParseEpe(body)) || !open_) return false;
+    if (!(epe = nmea::ParseEpe(body)) || !open_) {
+      return false;
+    }
     bit = kEpe;
   } else if (type == "GSA") {
-    if (const auto gsa = nmea::ParseGsa(body)) last_pdop_ = static_cast<float>(gsa->pdop);
+    if (const auto gsa = nmea::ParseGsa(body)) {
+      last_pdop_ = static_cast<float>(gsa->pdop);
+    }
     return false;
   } else {
     return false;
@@ -114,7 +131,9 @@ bool EpochAssembler::Feed(std::string_view line, int64_t t_arrival_ns, Fix& out)
   bool closed = false;
   if (bit != kEpe) {
     if (open_ && utc != pending_utc_) {
-      if (!emitted_ && (seen_ & kGga)) closed = Emit(out);
+      if (!emitted_ && (seen_ & kGga)) {
+        closed = Emit(out);
+      }
       expected_ = seen_;
       StartEpoch(utc);
     } else if (!open_) {
@@ -132,13 +151,18 @@ bool EpochAssembler::Feed(std::string_view line, int64_t t_arrival_ns, Fix& out)
     p.h_ell_m = gga->alt_msl_m + gga->geoid_sep_m;
     p.hdop = static_cast<float>(gga->hdop);
     p.sats = gga->sats;
-    p.diff_age_s = gga->has_diff_age ? static_cast<float>(gga->diff_age_s) : 0.0f;
+    p.diff_age_s =
+        gga->has_diff_age ? static_cast<float>(gga->diff_age_s) : 0.0f;
     p.station_id = gga->station_id;
-    const bool differential = p.type == FixType::kDgnss || p.type == FixType::kRtkFixed ||
+    const bool differential = p.type == FixType::kDgnss ||
+                              p.type == FixType::kRtkFixed ||
                               p.type == FixType::kRtkFloat;
-    p.frame = differential && gga->has_diff_age ? FixFrame::kCorrected : FixFrame::kAutonomous;
+    p.frame = differential && gga->has_diff_age ? FixFrame::kCorrected
+                                                : FixFrame::kAutonomous;
   } else if (rmc) {
-    if (rmc->date_ymd != 0) p.date_ymd = last_date_ = rmc->date_ymd;
+    if (rmc->date_ymd != 0) {
+      p.date_ymd = last_date_ = rmc->date_ymd;
+    }
     if (rmc->valid && rmc->has_course) {
       const double c = rmc->course_deg * std::numbers::pi / 180.0;
       p.vel_e_mps = static_cast<float>(rmc->speed_mps * std::sin(c));
@@ -161,13 +185,18 @@ bool EpochAssembler::Feed(std::string_view line, int64_t t_arrival_ns, Fix& out)
       p.sigma_source = SigmaSource::kEpe;
     }
   } else if (zda) {
-    if (zda->date_ymd != 0) p.date_ymd = last_date_ = zda->date_ymd;
+    if (zda->date_ymd != 0) {
+      p.date_ymd = last_date_ = zda->date_ymd;
+    }
   }
   seen_ |= bit;
   p.t_arrival_ns = t_arrival_ns;
 
-  if (closed) return true;
-  if (!emitted_ && expected_ != 0 && (seen_ & kGga) && (seen_ & expected_) == expected_) {
+  if (closed) {
+    return true;
+  }
+  if (!emitted_ && expected_ != 0 && (seen_ & kGga) &&
+      (seen_ & expected_) == expected_) {
     return Emit(out);
   }
   return false;
@@ -175,7 +204,9 @@ bool EpochAssembler::Feed(std::string_view line, int64_t t_arrival_ns, Fix& out)
 
 bool EpochAssembler::Flush(Fix& out) noexcept {
   const bool had = open_ && !emitted_ && (seen_ & kGga);
-  if (had) Emit(out);
+  if (had) {
+    Emit(out);
+  }
   open_ = false;
   return had;
 }

@@ -6,8 +6,8 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <utility>
 
@@ -59,7 +59,8 @@ const char* ToString(State s) noexcept {
 
 // ---------------------------------------------------------------- RawRecorder
 
-std::optional<RawRecorder> RawRecorder::Open(const std::string& path, std::string& err) {
+std::optional<RawRecorder> RawRecorder::Open(const std::string& path,
+                                             std::string& err) {
   std::FILE* f = std::fopen(path.c_str(), "wb");
   if (f == nullptr) {
     err = path + ": " + std::strerror(errno);
@@ -69,11 +70,14 @@ std::optional<RawRecorder> RawRecorder::Open(const std::string& path, std::strin
   return RawRecorder(f);
 }
 
-RawRecorder::RawRecorder(RawRecorder&& o) noexcept : f_(std::exchange(o.f_, nullptr)), bytes_(o.bytes_) {}
+RawRecorder::RawRecorder(RawRecorder&& o) noexcept
+    : f_(std::exchange(o.f_, nullptr)), bytes_(o.bytes_) {}
 
 RawRecorder& RawRecorder::operator=(RawRecorder&& o) noexcept {
   if (this != &o) {
-    if (f_ != nullptr) std::fclose(f_);
+    if (f_ != nullptr) {
+      std::fclose(f_);
+    }
     f_ = std::exchange(o.f_, nullptr);
     bytes_ = o.bytes_;
   }
@@ -81,11 +85,15 @@ RawRecorder& RawRecorder::operator=(RawRecorder&& o) noexcept {
 }
 
 RawRecorder::~RawRecorder() {
-  if (f_ != nullptr) std::fclose(f_);
+  if (f_ != nullptr) {
+    std::fclose(f_);
+  }
 }
 
 void RawRecorder::Write(std::span<const uint8_t> bytes) noexcept {
-  if (f_ == nullptr) return;
+  if (f_ == nullptr) {
+    return;
+  }
   bytes_ += std::fwrite(bytes.data(), 1, bytes.size(), f_);
 }
 
@@ -100,16 +108,22 @@ Lg290pReceiver::Lg290pReceiver(ReceiverOptions options)
 Lg290pReceiver::~Lg290pReceiver() { Stop(); }
 
 bool Lg290pReceiver::Start() {
-  if (running_.exchange(true)) return false;
+  if (running_.exchange(true)) {
+    return false;
+  }
   stop_ = false;
   thread_ = std::thread([this] { Run(); });
   return true;
 }
 
 void Lg290pReceiver::Stop() {
-  if (!running_) return;
+  if (!running_) {
+    return;
+  }
   stop_ = true;
-  if (thread_.joinable()) thread_.join();
+  if (thread_.joinable()) {
+    thread_.join();
+  }
   running_ = false;
 }
 
@@ -125,7 +139,8 @@ std::optional<Fix> Lg290pReceiver::LatestFix() const {
   return latest_;
 }
 
-std::future<std::optional<nmea::OwnedReply>> Lg290pReceiver::Send(lg290p::Command cmd) {
+std::future<std::optional<nmea::OwnedReply>> Lg290pReceiver::Send(
+    lg290p::Command cmd) {
   Pending p{std::move(cmd), {}};
   auto fut = p.promise.get_future();
   std::lock_guard lk(mu_);
@@ -141,7 +156,9 @@ bool Lg290pReceiver::Inject(std::span<const uint8_t> frames) {
     status_.inject_dropped += frames.size();
     return false;
   }
-  for (size_t i = 0; i < frames.size(); ++i) ring_[(head + i) % kRingSize] = frames[i];
+  for (size_t i = 0; i < frames.size(); ++i) {
+    ring_[(head + i) % kRingSize] = frames[i];
+  }
   ring_head_.store(head + frames.size(), std::memory_order_release);
   return true;
 }
@@ -151,17 +168,23 @@ void Lg290pReceiver::SetState(State s, std::string reason) {
   {
     std::lock_guard lk(mu_);
     if (status_.state == s) {
-      if (s == State::kReconnecting) status_.last_error = reason;
+      if (s == State::kReconnecting) {
+        status_.last_error = reason;
+      }
       return;
     }
     ev.from = status_.state;
     status_.state = s;
-    if (s == State::kReconnecting || s == State::kFault) status_.last_error = reason;
+    if (s == State::kReconnecting || s == State::kFault) {
+      status_.last_error = reason;
+    }
   }
   ev.to = s;
   ev.reason = std::move(reason);
   ev.t_ns = NowNs();
-  if (on_status_) on_status_(ev);
+  if (on_status_) {
+    on_status_(ev);
+  }
 }
 
 void Lg290pReceiver::Run() {
@@ -169,7 +192,9 @@ void Lg290pReceiver::Run() {
   enum class Phase { kConnect, kIdentify, kStream } phase = Phase::kConnect;
   {
     std::lock_guard lk(mu_);
-    if (status_.state == State::kStopped) status_.state = State::kDisconnected;
+    if (status_.state == State::kStopped) {
+      status_.state = State::kDisconnected;
+    }
   }
 
   while (!StopRequested()) {
@@ -185,7 +210,9 @@ void Lg290pReceiver::Run() {
     }
 
     if (phase == Phase::kConnect) {
-      if (current != State::kReconnecting) SetState(State::kOpening, "opening " + opt_.port);
+      if (current != State::kReconnecting) {
+        SetState(State::kOpening, "opening " + opt_.port);
+      }
       if (!TryOpen()) {
         std::string err;
         {
@@ -196,7 +223,9 @@ void Lg290pReceiver::Run() {
         BackoffWait();
         continue;
       }
-      if (current == State::kReconnecting) SetState(State::kOpening, opt_.port + " is back");
+      if (current == State::kReconnecting) {
+        SetState(State::kOpening, opt_.port + " is back");
+      }
       phase = Phase::kIdentify;
     }
 
@@ -207,7 +236,8 @@ void Lg290pReceiver::Run() {
           SetState(State::kReconnecting, "port lost while identifying");
           phase = Phase::kConnect;
         } else {
-          SetState(State::kFault, "no reply to PQTMVERNO at any baud on " + opt_.port);
+          SetState(State::kFault,
+                   "no reply to PQTMVERNO at any baud on " + opt_.port);
         }
         continue;
       }
@@ -236,7 +266,9 @@ void Lg290pReceiver::Run() {
     }
 
     if (phase == Phase::kStream) {
-      while (!StopRequested() && port_ && !reidentify_) StreamOnce();
+      while (!StopRequested() && port_ && !reidentify_) {
+        StreamOnce();
+      }
       if (reidentify_) {
         reidentify_ = false;
         phase = Phase::kIdentify;
@@ -268,7 +300,9 @@ bool Lg290pReceiver::TryOpen() {
   last_utc_ = -1.0;
   std::lock_guard lk(mu_);
   status_.baud = opt_.baud;
-  if (had_connection_) ++status_.reconnects;
+  if (had_connection_) {
+    ++status_.reconnects;
+  }
   return true;
 }
 
@@ -277,37 +311,49 @@ void Lg290pReceiver::BackoffWait() {
   const int64_t until = NowNs() + int64_t{backoff_ms_} * 1'000'000;
   while (!StopRequested() && NowNs() < until) {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    if (absent && PathExists(opt_.port)) break;  // replugged: retry at once
+    if (absent && PathExists(opt_.port)) {
+      break;  // replugged: retry at once
+    }
   }
   backoff_ms_ = std::min(backoff_ms_ * 2, opt_.backoff_max_ms);
 }
 
 bool Lg290pReceiver::Pump(int timeout_ms) {
-  if (!port_) return false;
+  if (!port_) {
+    return false;
+  }
   std::array<uint8_t, 2048> buf{};
   const int n = port_->Read(buf, timeout_ms);
   if (n < 0) {
     port_.reset();
     return false;
   }
-  if (n == 0) return true;
+  if (n == 0) {
+    return true;
+  }
   const int64_t t = NowNs();
   const std::span<const uint8_t> data(buf.data(), static_cast<size_t>(n));
-  if (on_raw_) on_raw_(data);
+  if (on_raw_) {
+    on_raw_(data);
+  }
   framer_.Feed(data, [&](const Frame& f) { OnFrame(f, t); });
   std::lock_guard lk(mu_);
   status_.bytes += static_cast<uint64_t>(n);
-  status_.framer = framer_.counters();
+  status_.framer = framer_.Stats();
   return true;
 }
 
 void Lg290pReceiver::OnFrame(const Frame& f, int64_t t_arrival) {
   if (f.kind == FrameKind::kRtcm) {
-    if (on_rtcm_) on_rtcm_(f.bytes);
+    if (on_rtcm_) {
+      on_rtcm_(f.bytes);
+    }
     return;
   }
-  const std::string_view line = f.text();
-  if (on_nmea_) on_nmea_(line);
+  const std::string_view line = f.Text();
+  if (on_nmea_) {
+    on_nmea_(line);
+  }
 
   if (line.starts_with("$PQTM") && (awaiting_ != nullptr || in_flight_)) {
     std::array<std::string_view, nmea::kMaxFields> fields{};
@@ -323,11 +369,15 @@ void Lg290pReceiver::OnFrame(const Frame& f, int64_t t_arrival) {
   }
 
   Fix fix{};
-  if (!epoch_.Feed(line, t_arrival, fix)) return;
+  if (!epoch_.Feed(line, t_arrival, fix)) {
+    return;
+  }
   // A receiver that restarted on its own (power glitch, watchdog) jumps back
   // in time; re-identify so configuration that did not persist is re-applied.
   const bool midnight = last_utc_ > 86000.0 && fix.utc_s < 400.0;
-  if (last_utc_ >= 0.0 && fix.utc_s < last_utc_ - 1.0 && !midnight) reidentify_ = true;
+  if (last_utc_ >= 0.0 && fix.utc_s < last_utc_ - 1.0 && !midnight) {
+    reidentify_ = true;
+  }
   last_utc_ = fix.utc_s;
   last_fix_t_ = fix.t_arrival_ns;
   State current;
@@ -337,17 +387,27 @@ void Lg290pReceiver::OnFrame(const Frame& f, int64_t t_arrival) {
     ++status_.epochs;
     current = status_.state;
   }
-  if (on_fix_) on_fix_(fix);
-  if (current == State::kStale) SetState(State::kStreaming, "epochs resumed");
+  if (on_fix_) {
+    on_fix_(fix);
+  }
+  if (current == State::kStale) {
+    SetState(State::kStreaming, "epochs resumed");
+  }
 }
 
-bool Lg290pReceiver::Execute(const lg290p::Command& cmd, std::optional<nmea::OwnedReply>& reply) {
+bool Lg290pReceiver::Execute(const lg290p::Command& cmd,
+                             std::optional<nmea::OwnedReply>& reply) {
   reply.reset();
-  for (int i = 0; i < 16 && ring_tail_.load() != ring_head_.load(); ++i) DrainInject();
-  if (!port_) return false;
+  for (int i = 0; i < 16 && ring_tail_.load() != ring_head_.load(); ++i) {
+    DrainInject();
+  }
+  if (!port_) {
+    return false;
+  }
   const auto* p = reinterpret_cast<const uint8_t*>(cmd.text.data());
   size_t done = 0;
-  const int64_t deadline = NowNs() + int64_t{opt_.command_timeout_ms} * 1'000'000;
+  const int64_t deadline =
+      NowNs() + int64_t{opt_.command_timeout_ms} * 1'000'000;
   while (done < cmd.text.size()) {
     size_t w = 0;
     if (!port_->WriteSome(std::span(p + done, cmd.text.size() - done), w)) {
@@ -356,16 +416,24 @@ bool Lg290pReceiver::Execute(const lg290p::Command& cmd, std::optional<nmea::Own
     }
     done += w;
     if (done < cmd.text.size()) {
-      if (NowNs() > deadline) return true;  // could not even send: treat as timeout
-      if (!Pump(5)) return false;
+      if (NowNs() > deadline) {
+        return true;  // could not even send: treat as timeout
+      }
+      if (!Pump(5)) {
+        return false;
+      }
     }
   }
-  if (cmd.reply_to.empty()) return true;
+  if (cmd.reply_to.empty()) {
+    return true;
+  }
   awaiting_ = &cmd;
   awaiting_reply_ = &reply;
   while (awaiting_ != nullptr && !StopRequested()) {
     const int64_t left_ms = (deadline - NowNs()) / 1'000'000;
-    if (left_ms <= 0) break;
+    if (left_ms <= 0) {
+      break;
+    }
     if (!Pump(static_cast<int>(std::min<int64_t>(left_ms, kPumpMs)))) {
       awaiting_ = nullptr;
       return false;
@@ -378,19 +446,29 @@ bool Lg290pReceiver::Execute(const lg290p::Command& cmd, std::optional<nmea::Own
 bool Lg290pReceiver::Identify() {
   std::vector<int> bauds{opt_.baud};
   for (int b : opt_.baud_candidates) {
-    if (std::find(bauds.begin(), bauds.end(), b) == bauds.end()) bauds.push_back(b);
+    if (std::find(bauds.begin(), bauds.end(), b) == bauds.end()) {
+      bauds.push_back(b);
+    }
   }
   for (int round = 0; round < kIdentifyRounds && !StopRequested(); ++round) {
     for (int b : bauds) {
-      if (StopRequested()) return false;
-      if (!port_) return false;
-      if (port_->baud() != b) {
-        if (!port_->SetBaud(b)) continue;
+      if (StopRequested()) {
+        return false;
+      }
+      if (!port_) {
+        return false;
+      }
+      if (port_->Baud() != b) {
+        if (!port_->SetBaud(b)) {
+          continue;
+        }
         port_->Flush();
         framer_.Reset();
       }
       std::optional<nmea::OwnedReply> reply;
-      if (!Execute(lg290p::QueryVersion(), reply)) return false;
+      if (!Execute(lg290p::QueryVersion(), reply)) {
+        return false;
+      }
       if (reply && reply->ok && !reply->values.empty()) {
         std::lock_guard lk(mu_);
         status_.firmware = reply->values[0];
@@ -407,14 +485,22 @@ bool Lg290pReceiver::Configure() {
     lg290p::ReceiverConfig have;
     for (const auto& cmd : lg290p::ReadCommands(opt_.config)) {
       std::optional<nmea::OwnedReply> reply;
-      if (!Execute(cmd, reply)) return false;
-      if (reply && reply->ok) lg290p::ApplyReadReply(*reply, have);
+      if (!Execute(cmd, reply)) {
+        return false;
+      }
+      if (reply && reply->ok) {
+        lg290p::ApplyReadReply(*reply, have);
+      }
     }
     const auto plan = lg290p::PlanConfig(opt_.config, have);
-    if (plan.empty()) return true;
+    if (plan.empty()) {
+      return true;
+    }
     if (pass == 1) {
       std::string names;
-      for (const auto& c : plan) names += (names.empty() ? "" : ", ") + c.reply_to;
+      for (const auto& c : plan) {
+        names += (names.empty() ? "" : ", ") + c.reply_to;
+      }
       std::lock_guard lk(mu_);
       status_.last_error = "receiver did not keep after reset: " + names;
       return true;
@@ -425,7 +511,9 @@ bool Lg290pReceiver::Configure() {
       std::string why = "no reply";
       for (int attempt = 0; attempt <= opt_.command_retries && !ok; ++attempt) {
         std::optional<nmea::OwnedReply> reply;
-        if (!Execute(cmd, reply)) return false;
+        if (!Execute(cmd, reply)) {
+          return false;
+        }
         if (cmd.reply_to.empty()) {
           ok = true;
         } else if (reply && reply->ok) {
@@ -436,28 +524,40 @@ bool Lg290pReceiver::Configure() {
       }
       if (!ok) {
         std::string text = cmd.text;
-        while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) text.pop_back();
+        while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
+          text.pop_back();
+        }
         std::lock_guard lk(mu_);
         status_.last_error = "receiver refused " + text + " (" + why + ")";
         return false;
       }
-      if (cmd.reply_to.empty()) reset = true;  // PQTMSRR
+      if (cmd.reply_to.empty()) {
+        reset = true;  // PQTMSRR
+      }
     }
-    if (!reset) return true;
+    if (!reset) {
+      return true;
+    }
     // Let the receiver reboot, then talk to it again.
     const int64_t until = NowNs() + 300'000'000;
     while (NowNs() < until && !StopRequested()) {
-      if (!Pump(kPumpMs)) return false;
+      if (!Pump(kPumpMs)) {
+        return false;
+      }
     }
     epoch_.Reset();
     last_utc_ = -1.0;
-    if (!Identify()) return false;
+    if (!Identify()) {
+      return false;
+    }
   }
   return true;
 }
 
 void Lg290pReceiver::DrainInject() {
-  if (!port_) return;
+  if (!port_) {
+    return;
+  }
   const size_t head = ring_head_.load(std::memory_order_acquire);
   size_t tail = ring_tail_.load(std::memory_order_relaxed);
   size_t budget = kInjectBudget;
@@ -466,11 +566,14 @@ void Lg290pReceiver::DrainInject() {
     const size_t off = tail % kRingSize;
     const size_t chunk = std::min({head - tail, kRingSize - off, budget});
     size_t w = 0;
-    const bool ok = port_->WriteSome(std::span<const uint8_t>(ring_.get() + off, chunk), w);
+    const bool ok =
+        port_->WriteSome(std::span<const uint8_t>(ring_.get() + off, chunk), w);
     tail += w;
     budget -= w;
     sent += w;
-    if (!ok || w < chunk) break;
+    if (!ok || w < chunk) {
+      break;
+    }
   }
   ring_tail_.store(tail, std::memory_order_release);
   if (sent > 0) {
@@ -487,11 +590,15 @@ void Lg290pReceiver::ServeQueue() {
     }
     return;
   }
-  if (ring_tail_.load() != ring_head_.load()) return;  // never split an RTCM frame
+  if (ring_tail_.load() != ring_head_.load()) {
+    return;  // never split an RTCM frame
+  }
   std::optional<Pending> next;
   {
     std::lock_guard lk(mu_);
-    if (queue_.empty()) return;
+    if (queue_.empty()) {
+      return;
+    }
     next.emplace(std::move(queue_.front()));
     queue_.pop_front();
   }
@@ -499,7 +606,8 @@ void Lg290pReceiver::ServeQueue() {
   size_t done = 0;
   while (done < next->cmd.text.size() && port_) {
     size_t w = 0;
-    if (!port_->WriteSome(std::span(p + done, next->cmd.text.size() - done), w)) {
+    if (!port_->WriteSome(std::span(p + done, next->cmd.text.size() - done),
+                          w)) {
       port_.reset();
       break;
     }
@@ -523,7 +631,9 @@ void Lg290pReceiver::FailPendingQueue() {
     std::lock_guard lk(mu_);
     q.swap(queue_);
   }
-  for (auto& p : q) p.promise.set_value(std::nullopt);
+  for (auto& p : q) {
+    p.promise.set_value(std::nullopt);
+  }
 }
 
 void Lg290pReceiver::StreamOnce() {
@@ -555,9 +665,12 @@ void Lg290pReceiver::StreamOnce() {
           latest_ = fix;
           ++status_.epochs;
         }
-        if (on_fix_) on_fix_(fix);
+        if (on_fix_) {
+          on_fix_(fix);
+        }
       }
-      SetState(State::kStale, "no epoch for " + std::to_string(opt_.stale_after_ms) + " ms");
+      SetState(State::kStale,
+               "no epoch for " + std::to_string(opt_.stale_after_ms) + " ms");
     }
   }
 }

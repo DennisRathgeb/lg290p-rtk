@@ -17,15 +17,18 @@ class LocalFrame {
   /// Origin latitude/longitude in degrees, ellipsoidal height in metres.
   LocalFrame(double lat0_deg, double lon0_deg, double h0_m) noexcept;
   /// Geodetic → ENU (metres).
-  void ToEnu(double lat_deg, double lon_deg, double h_m, double enu[3]) const noexcept;
+  void ToEnu(double lat_deg, double lon_deg, double h_m,
+             double enu[3]) const noexcept;
   /// ENU (metres) → geodetic.
-  void FromEnu(const double enu[3], double& lat_deg, double& lon_deg, double& h_m) const noexcept;
+  void FromEnu(const double enu[3], double& lat_deg, double& lon_deg,
+               double& h_m) const noexcept;
 
   /// Geodetic → ECEF (metres), GRS80.
-  static void GeodeticToEcef(double lat_deg, double lon_deg, double h_m, double xyz[3]) noexcept;
+  static void GeodeticToEcef(double lat_deg, double lon_deg, double h_m,
+                             double xyz[3]) noexcept;
   /// ECEF → geodetic, GRS80 (iterative, < 0.1 mm).
-  static void EcefToGeodetic(const double xyz[3], double& lat_deg, double& lon_deg,
-                             double& h_m) noexcept;
+  static void EcefToGeodetic(const double xyz[3], double& lat_deg,
+                             double& lon_deg, double& h_m) noexcept;
 
  private:
   double origin_[3];  // ECEF

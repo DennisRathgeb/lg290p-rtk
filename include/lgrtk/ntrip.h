@@ -36,18 +36,18 @@ enum class NtripState : uint8_t {
 
 /// Caster connection settings.
 struct NtripOptions {
-  std::string host;            ///< caster host name or address
-  int port = 2101;             ///< caster port
-  std::string mountpoint;      ///< mountpoint without leading '/'
-  std::string user;            ///< user name (may be empty)
-  std::string password;        ///< password (never logged)
-  int version = 2;             ///< NTRIP 1 or 2
-  bool send_gga = true;        ///< VRS / nearest-base casters need the rover position
-  int gga_interval_ms = 10000;  ///< GGA upload period
-  int stall_after_ms = 10000;   ///< no data for this long -> reconnect
+  std::string host;        ///< caster host name or address
+  int port = 2101;         ///< caster port
+  std::string mountpoint;  ///< mountpoint without leading '/'
+  std::string user;        ///< user name (may be empty)
+  std::string password;    ///< password (never logged)
+  int version = 2;         ///< NTRIP 1 or 2
+  bool send_gga = true;  ///< VRS / nearest-base casters need the rover position
+  int gga_interval_ms = 10000;    ///< GGA upload period
+  int stall_after_ms = 10000;     ///< no data for this long -> reconnect
   int connect_timeout_ms = 5000;  ///< TCP connect + response header
-  int backoff_min_ms = 1000;    ///< first retry delay
-  int backoff_max_ms = 60000;   ///< retry delay cap
+  int backoff_min_ms = 1000;      ///< first retry delay
+  int backoff_max_ms = 60000;     ///< retry delay cap
 };
 
 /// Snapshot of the client.
@@ -58,7 +58,7 @@ struct NtripStatus {
   uint64_t connects = 0;                 ///< successful connections
   int64_t last_data_age_ns = -1;         ///< -1 before the first data
   int http_status = 0;                   ///< last HTTP status (0 for ICY)
-  std::string last_error;                ///< most recent problem (no credentials)
+  std::string last_error;  ///< most recent problem (no credentials)
 };
 
 /// "$GPGGA,...*HH\r\n" for a caster from a fix (position as the receiver
@@ -79,8 +79,10 @@ class NtripClient {
 
   /// Latest rover position for GGA upload. Thread-safe; call from OnFix.
   void SetPosition(const Fix& fix);
-  /// State changes (old, new, reason). Set before Start(); runs on the client thread.
-  void OnStatus(std::function<void(NtripState, NtripState, const std::string&)> cb) {
+  /// State changes (old, new, reason). Set before Start(); runs on the client
+  /// thread.
+  void OnStatus(
+      std::function<void(NtripState, NtripState, const std::string&)> cb) {
     on_status_ = std::move(cb);
   }
   /// Starts the thread; false if already running.
@@ -90,8 +92,9 @@ class NtripClient {
   [[nodiscard]] NtripStatus Status() const;
 
   /// Downloads a caster's sourcetable (list of mountpoints).
-  static std::optional<std::string> FetchSourcetable(const std::string& host, int port,
-                                                     int version, std::string& err);
+  static std::optional<std::string> FetchSourcetable(const std::string& host,
+                                                     int port, int version,
+                                                     std::string& err);
 
  private:
   void Run();

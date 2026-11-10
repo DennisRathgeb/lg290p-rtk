@@ -19,20 +19,26 @@ TEST(Lg290pTest, CommandsMatchSpecExamples) {
   EXPECT_EQ(SetFixRate(1000)->text, "$PQTMCFGFIXRATE,W,1000*59\r\n");
   EXPECT_EQ(GetFixRate().text, "$PQTMCFGFIXRATE,R*71\r\n");
   EXPECT_EQ(SetMessageRate("GGA", 1).text, "$PQTMCFGMSGRATE,W,GGA,1*0A\r\n");
-  EXPECT_EQ(SetMessageRate("PQTMEPE", 1, 2).text, "$PQTMCFGMSGRATE,W,PQTMEPE,1,2*1D\r\n");
+  EXPECT_EQ(SetMessageRate("PQTMEPE", 1, 2).text,
+            "$PQTMCFGMSGRATE,W,PQTMEPE,1,2*1D\r\n");
   EXPECT_EQ(GetMessageRate("GGA").text, "$PQTMCFGMSGRATE,R,GGA*12\r\n");
-  EXPECT_EQ(GetMessageRate("PQTMEPE", 2).text, "$PQTMCFGMSGRATE,R,PQTMEPE,2*05\r\n");
-  EXPECT_EQ(SetNmeaDecimals({3, 8, 3, 2, 3, 2}).text, "$PQTMCFGNMEADP,W,3,8,3,2,3,2*39\r\n");
+  EXPECT_EQ(GetMessageRate("PQTMEPE", 2).text,
+            "$PQTMCFGMSGRATE,R,PQTMEPE,2*05\r\n");
+  EXPECT_EQ(SetNmeaDecimals({3, 8, 3, 2, 3, 2}).text,
+            "$PQTMCFGNMEADP,W,3,8,3,2,3,2*39\r\n");
   EXPECT_EQ(SetRtk({1, 1, 60})->text, "$PQTMCFGRTK,W,1,1,60*46\r\n");
   EXPECT_EQ(SetConstellations({true, true, true, true, false, false}).text,
             "$PQTMCFGCNST,W,1,1,1,1,0,0*2B\r\n");
   EXPECT_EQ(SetElevationMask(5.0)->text, "$PQTMCFGELETHD,W,5.0*32\r\n");
   EXPECT_EQ(SetCnrMask(10.0)->text, "$PQTMCFGCNRTHD,W,10.0*15\r\n");
   EXPECT_EQ(SetReceiverMode(Mode::kBase).text, "$PQTMCFGRCVRMODE,W,2*29\r\n");
-  EXPECT_EQ(SurveyIn(3600, 1.2)->text, "$PQTMCFGSVIN,W,1,3600,1.2,0,0,0*0A\r\n");
-  EXPECT_EQ(FixedBase(-2519265.0514, 4849534.9045, 3277834.6432).text,
-            "$PQTMCFGSVIN,W,2,0,0,-2519265.0514,4849534.9045,3277834.6432*2A\r\n");
-  EXPECT_EQ(SetPps({true, 100, 1, 1})->text, "$PQTMCFGPPS,W,1,1,100,1,1,0*73\r\n");
+  EXPECT_EQ(SurveyIn(3600, 1.2)->text,
+            "$PQTMCFGSVIN,W,1,3600,1.2,0,0,0*0A\r\n");
+  EXPECT_EQ(
+      FixedBase(-2519265.0514, 4849534.9045, 3277834.6432).text,
+      "$PQTMCFGSVIN,W,2,0,0,-2519265.0514,4849534.9045,3277834.6432*2A\r\n");
+  EXPECT_EQ(SetPps({true, 100, 1, 1})->text,
+            "$PQTMCFGPPS,W,1,1,100,1,1,0*73\r\n");
   EXPECT_EQ(SetUartBaud(1, 115200)->text, "$PQTMCFGUART,W,1,115200*05\r\n");
   EXPECT_EQ(Restart(Start::kCold).text, "$PQTMCOLD*1C\r\n");
   EXPECT_EQ(Restart(Start::kWarm).text, "$PQTMWARM*11\r\n");
@@ -75,13 +81,22 @@ TEST(Lg290pTest, ReplyMatches) {
 TEST(Lg290pTest, ReadBackFillsHave) {
   ReceiverConfig have;
   std::array<std::string_view, nmea::kMaxFields> f{};
-  ApplyReadReply(nmea::Own(*nmea::ParseReply("$PQTMCFGFIXRATE,OK,1000*0A", f)), have);
-  ApplyReadReply(nmea::Own(*nmea::ParseReply("$PQTMCFGRTK,OK,1,1,120*20", f)), have);
-  ApplyReadReply(nmea::Own(*nmea::ParseReply("$PQTMCFGMSGRATE,OK,GGA,1*59", f)), have);
-  ApplyReadReply(nmea::Own(*nmea::ParseReply("$PQTMCFGMSGRATE,OK,PQTMEPE,1,2*4E", f)), have);
-  ApplyReadReply(nmea::Own(*nmea::ParseReply("$PQTMCFGCNST,OK,1,1,1,1,0,0*78", f)), have);
-  ApplyReadReply(nmea::Own(*nmea::ParseReply("$PQTMCFGELETHD,OK,5.0*61", f)), have);
-  ApplyReadReply(nmea::Own(*nmea::ParseReply("$PQTMCFGNMEADP,OK,3,8,3,2,3,2*6A", f)), have);
+  ApplyReadReply(nmea::Own(*nmea::ParseReply("$PQTMCFGFIXRATE,OK,1000*0A", f)),
+                 have);
+  ApplyReadReply(nmea::Own(*nmea::ParseReply("$PQTMCFGRTK,OK,1,1,120*20", f)),
+                 have);
+  ApplyReadReply(nmea::Own(*nmea::ParseReply("$PQTMCFGMSGRATE,OK,GGA,1*59", f)),
+                 have);
+  ApplyReadReply(
+      nmea::Own(*nmea::ParseReply("$PQTMCFGMSGRATE,OK,PQTMEPE,1,2*4E", f)),
+      have);
+  ApplyReadReply(
+      nmea::Own(*nmea::ParseReply("$PQTMCFGCNST,OK,1,1,1,1,0,0*78", f)), have);
+  ApplyReadReply(nmea::Own(*nmea::ParseReply("$PQTMCFGELETHD,OK,5.0*61", f)),
+                 have);
+  ApplyReadReply(
+      nmea::Own(*nmea::ParseReply("$PQTMCFGNMEADP,OK,3,8,3,2,3,2*6A", f)),
+      have);
   EXPECT_EQ(have.fix_interval_ms, 1000);
   ASSERT_TRUE(have.rtk);
   EXPECT_EQ(have.rtk->timeout_s, 120);

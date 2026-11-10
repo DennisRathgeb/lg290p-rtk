@@ -29,16 +29,19 @@ class Projection {
   /// for projected CRSs). Refuses (nullopt + reason) when PROJ only finds a
   /// "ballpark" transformation or the best one needs a grid that is not
   /// installed; the reason names the grid.
-  static std::optional<Projection> Create(std::string_view from_crs, std::string_view to_crs,
+  static std::optional<Projection> Create(std::string_view from_crs,
+                                          std::string_view to_crs,
                                           std::string& err);
   Projection(Projection&&) noexcept;
   Projection& operator=(Projection&&) noexcept;
   ~Projection();
 
   /// Geodetic → target. False if PROJ fails for this point.
-  bool Forward(double lat_deg, double lon_deg, double h_m, double out[3]) const noexcept;
+  bool Forward(double lat_deg, double lon_deg, double h_m,
+               double out[3]) const noexcept;
   /// Target → geodetic.
-  bool Inverse(const double in[3], double& lat_deg, double& lon_deg, double& h_m) const noexcept;
+  bool Inverse(const double in[3], double& lat_deg, double& lon_deg,
+               double& h_m) const noexcept;
   /// The PROJ pipeline in use (for logs).
   [[nodiscard]] std::string Description() const;
 

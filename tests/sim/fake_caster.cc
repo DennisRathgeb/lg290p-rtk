@@ -21,7 +21,9 @@ void SendAll(int fd, const void* data, size_t n) {
   const auto* p = static_cast<const char*>(data);
   while (n > 0) {
     const ssize_t w = ::send(fd, p, n, MSG_NOSIGNAL);
-    if (w <= 0) return;
+    if (w <= 0) {
+      return;
+    }
     p += w;
     n -= static_cast<size_t>(w);
   }
@@ -56,7 +58,9 @@ FakeCaster::FakeCaster(Mode mode) : mode_(mode) {
 
 FakeCaster::~FakeCaster() {
   stop_ = true;
-  if (thread_.joinable()) thread_.join();
+  if (thread_.joinable()) {
+    thread_.join();
+  }
   ::close(listen_fd_);
 }
 
@@ -73,9 +77,13 @@ std::string FakeCaster::ClientBytes() const {
 void FakeCaster::Loop() {
   while (!stop_) {
     pollfd p{listen_fd_, POLLIN, 0};
-    if (::poll(&p, 1, 50) <= 0) continue;
+    if (::poll(&p, 1, 50) <= 0) {
+      continue;
+    }
     const int fd = ::accept4(listen_fd_, nullptr, nullptr, SOCK_CLOEXEC);
-    if (fd < 0) continue;
+    if (fd < 0) {
+      continue;
+    }
     ++connections_;
     Serve(fd);
     ::close(fd);
@@ -86,19 +94,27 @@ void FakeCaster::Serve(int fd) {
   // Read the request headers.
   std::string req;
   char buf[1024];
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-  while (req.find("\r\n\r\n") == std::string::npos && std::chrono::steady_clock::now() < deadline) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (req.find("\r\n\r\n") == std::string::npos &&
+         std::chrono::steady_clock::now() < deadline) {
     pollfd p{fd, POLLIN, 0};
-    if (::poll(&p, 1, 50) <= 0) continue;
+    if (::poll(&p, 1, 50) <= 0) {
+      continue;
+    }
     const ssize_t n = ::recv(fd, buf, sizeof buf, 0);
-    if (n <= 0) return;
+    if (n <= 0) {
+      return;
+    }
     req.append(buf, static_cast<size_t>(n));
   }
   const size_t end = req.find("\r\n\r\n");
   {
     std::lock_guard lk(mu_);
     requests_.push_back(req.substr(0, end));
-    if (end != std::string::npos) client_bytes_ += req.substr(end + 4);
+    if (end != std::string::npos) {
+      client_bytes_ += req.substr(end + 4);
+    }
   }
   switch (mode_) {
     case Mode::kUnauthorized: {
@@ -113,7 +129,8 @@ void FakeCaster::Serve(int fd) {
     }
     default: {
       const char r[] =
-          "HTTP/1.1 200 OK\r\nNtrip-Version: Ntrip/2.0\r\nContent-Type: gnss/data\r\n"
+          "HTTP/1.1 200 OK\r\nNtrip-Version: Ntrip/2.0\r\nContent-Type: "
+          "gnss/data\r\n"
           "Transfer-Encoding: chunked\r\n\r\n";
       SendAll(fd, r, sizeof r - 1);
       break;
@@ -127,12 +144,18 @@ void FakeCaster::Serve(int fd) {
     pollfd p{fd, POLLIN, 0};
     if (::poll(&p, 1, 50) > 0) {
       const ssize_t n = ::recv(fd, buf, sizeof buf, 0);
-      if (n <= 0) return;
+      if (n <= 0) {
+        return;
+      }
       std::lock_guard lk(mu_);
       client_bytes_.append(buf, static_cast<size_t>(n));
     }
-    if (mode_ == Mode::kSilent) continue;
-    if (mode_ == Mode::kDropAfterOne && sent == 1) return;
+    if (mode_ == Mode::kSilent) {
+      continue;
+    }
+    if (mode_ == Mode::kDropAfterOne && sent == 1) {
+      return;
+    }
     if (chunked) {
       // Split each frame over two chunks to exercise reassembly.
       const size_t half = frame.size() / 2;

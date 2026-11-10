@@ -24,12 +24,14 @@ enum class FrameKind : uint8_t { kNmea, kRtcm };
 /// One complete, checked frame. `bytes` points into the framer's buffer and
 /// is valid only during the callback.
 struct Frame {
-  FrameKind kind;                 ///< NMEA sentence or RTCM3 frame
-  std::span<const uint8_t> bytes;  ///< NMEA: "$...*HH" without CR/LF; RTCM: header..CRC
+  FrameKind kind;  ///< NMEA sentence or RTCM3 frame
+  std::span<const uint8_t>
+      bytes;  ///< NMEA: "$...*HH" without CR/LF; RTCM: header..CRC
   /// The NMEA sentence as text (empty for RTCM).
-  [[nodiscard]] std::string_view text() const {
+  [[nodiscard]] std::string_view Text() const {
     return kind == FrameKind::kNmea
-               ? std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size())
+               ? std::string_view(reinterpret_cast<const char*>(bytes.data()),
+                                  bytes.size())
                : std::string_view();
   }
 };
@@ -66,7 +68,9 @@ class StreamFramer {
     while (!data.empty()) {
       data = data.subspan(Append(data));
       Frame f{};
-      while (Next(f)) on_frame(f);
+      while (Next(f)) {
+        on_frame(f);
+      }
       Compact();
     }
   }
@@ -77,7 +81,7 @@ class StreamFramer {
     pos_ = 0;
   }
 
-  [[nodiscard]] const Counters& counters() const noexcept { return counters_; }
+  [[nodiscard]] const Counters& Stats() const noexcept { return counters_; }
 
  private:
   size_t Append(std::span<const uint8_t> data) noexcept;
@@ -86,8 +90,8 @@ class StreamFramer {
   void Skip(size_t n) noexcept;
 
   std::array<uint8_t, 4096> buf_{};
-  size_t len_ = 0;  // bytes in buf_
-  size_t pos_ = 0;  // start of unprocessed data
+  size_t len_ = 0;            // bytes in buf_
+  size_t pos_ = 0;            // start of unprocessed data
   bool in_oversize_ = false;  // discarding the rest of an overlong line
   Counters counters_;
 };

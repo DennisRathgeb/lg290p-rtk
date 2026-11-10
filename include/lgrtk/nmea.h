@@ -23,12 +23,22 @@ namespace lgrtk::nmea {
 inline constexpr size_t kMaxFields = 32;
 
 /// The constellation a talker id stands for.
-enum class Talker : uint8_t { kUnknown, kMulti, kGps, kGlonass, kGalileo, kBeidou, kQzss, kNavic };
+enum class Talker : uint8_t {
+  kUnknown,
+  kMulti,
+  kGps,
+  kGlonass,
+  kGalileo,
+  kBeidou,
+  kQzss,
+  kNavic
+};
 
 /// Body between '$' and '*' when the checksum is correct, else empty.
 [[nodiscard]] std::string_view Validate(std::string_view line) noexcept;
 /// Splits `body` at commas into `out`; returns the number of fields.
-size_t SplitFields(std::string_view body, std::span<std::string_view> out) noexcept;
+size_t SplitFields(std::string_view body,
+                   std::span<std::string_view> out) noexcept;
 /// "GGA" for "GNGGA,...", "PQTMEPE" for "PQTMEPE,...", empty if unknown.
 [[nodiscard]] std::string_view SentenceType(std::string_view body) noexcept;
 /// Talker of a standard sentence body ("GN" → kMulti, "GP" → kGps, ...).
@@ -36,18 +46,19 @@ size_t SplitFields(std::string_view body, std::span<std::string_view> out) noexc
 
 /// GGA: time, position, fix quality.
 struct Gga {
-  double utc_s;              ///< s, UTC seconds of day
-  double lat_deg;            ///< deg, north positive
-  double lon_deg;            ///< deg, east positive
-  double alt_msl_m;          ///< m, altitude above the receiver's geoid model
-  double geoid_sep_m;        ///< m, geoid separation (ellipsoid height = alt + sep)
-  double hdop;               ///< dimensionless
-  double diff_age_s;         ///< s, age of differential corrections
-  uint16_t station_id;       ///< reference station id (0 if empty)
-  uint8_t quality;           ///< 0 none, 1 single, 2 DGNSS, 4 RTK fixed, 5 RTK float, ...
-  uint8_t sats;              ///< satellites used
-  bool has_position;         ///< lat/lon fields present
-  bool has_diff_age;         ///< differential age field present
+  double utc_s;         ///< s, UTC seconds of day
+  double lat_deg;       ///< deg, north positive
+  double lon_deg;       ///< deg, east positive
+  double alt_msl_m;     ///< m, altitude above the receiver's geoid model
+  double geoid_sep_m;   ///< m, geoid separation (ellipsoid height = alt + sep)
+  double hdop;          ///< dimensionless
+  double diff_age_s;    ///< s, age of differential corrections
+  uint16_t station_id;  ///< reference station id (0 if empty)
+  uint8_t
+      quality;   ///< 0 none, 1 single, 2 DGNSS, 4 RTK fixed, 5 RTK float, ...
+  uint8_t sats;  ///< satellites used
+  bool has_position;  ///< lat/lon fields present
+  bool has_diff_age;  ///< differential age field present
 };
 
 /// RMC: validity, speed, course, date.
@@ -57,9 +68,10 @@ struct Rmc {
   double lon_deg;     ///< deg
   double speed_mps;   ///< m/s over ground
   double course_deg;  ///< deg true, 0 if empty
-  int32_t date_ymd;   ///< e.g. 20261110; 0 while the receiver does not know the date
-  bool valid;         ///< status 'A'
-  bool has_course;    ///< course field present
+  int32_t
+      date_ymd;  ///< e.g. 20261110; 0 while the receiver does not know the date
+  bool valid;    ///< status 'A'
+  bool has_course;  ///< course field present
 };
 
 /// GST: error statistics (1-sigma, metres).
@@ -79,8 +91,8 @@ struct Gst {
 struct Gsa {
   double pdop, hdop, vdop;  ///< dimensionless
   uint8_t fix_mode;         ///< 1 none, 2 2-D, 3 3-D
-  uint8_t system_id;        ///< 1 GPS, 2 GLONASS, 3 Galileo, 4 BDS, 5 QZSS, 6 NavIC
-  uint8_t used_count;       ///< satellites listed as used
+  uint8_t system_id;   ///< 1 GPS, 2 GLONASS, 3 Galileo, 4 BDS, 5 QZSS, 6 NavIC
+  uint8_t used_count;  ///< satellites listed as used
 };
 
 /// One satellite of a GSV sentence.
@@ -93,12 +105,12 @@ struct SatInView {
 
 /// GSV: satellites in view, up to four per sentence.
 struct Gsv {
-  Talker talker;                 ///< constellation
-  uint8_t total_msgs;            ///< sentences in this group
-  uint8_t msg_num;               ///< 1-based index
-  uint8_t in_view;               ///< satellites in view for this signal
-  uint8_t signal_id;             ///< NMEA 4.10 signal id (0 if absent)
-  uint8_t count;                 ///< valid entries in `sats`
+  Talker talker;                  ///< constellation
+  uint8_t total_msgs;             ///< sentences in this group
+  uint8_t msg_num;                ///< 1-based index
+  uint8_t in_view;                ///< satellites in view for this signal
+  uint8_t signal_id;              ///< NMEA 4.10 signal id (0 if absent)
+  uint8_t count;                  ///< valid entries in `sats`
   std::array<SatInView, 4> sats;  ///< satellites
 };
 
@@ -139,9 +151,9 @@ struct SvinStatus {
 /// Reply of the receiver to a `$PQTM` command: "$PQTMxxx,OK[,values]" or
 /// "$PQTMxxx,ERROR,<code>". Views point into the parsed line.
 struct Reply {
-  std::string_view command;               ///< e.g. "PQTMCFGFIXRATE"
-  bool ok;                                ///< OK vs ERROR
-  int error_code;                         ///< 1 invalid parameters, 2 failed, 3 unsupported
+  std::string_view command;  ///< e.g. "PQTMCFGFIXRATE"
+  bool ok;                   ///< OK vs ERROR
+  int error_code;            ///< 1 invalid parameters, 2 failed, 3 unsupported
   std::span<const std::string_view> values;  ///< fields after OK
 };
 
@@ -162,10 +174,11 @@ struct OwnedReply {
 [[nodiscard]] std::optional<Zda> ParseZda(std::string_view line) noexcept;
 [[nodiscard]] std::optional<Epe> ParseEpe(std::string_view line) noexcept;
 [[nodiscard]] std::optional<Verno> ParseVerno(std::string_view line) noexcept;
-[[nodiscard]] std::optional<SvinStatus> ParseSvinStatus(std::string_view line) noexcept;
+[[nodiscard]] std::optional<SvinStatus> ParseSvinStatus(
+    std::string_view line) noexcept;
 /// Parses a command reply; `fields` is scratch space the reply's values view.
-[[nodiscard]] std::optional<Reply> ParseReply(std::string_view line,
-                                              std::span<std::string_view> fields) noexcept;
+[[nodiscard]] std::optional<Reply> ParseReply(
+    std::string_view line, std::span<std::string_view> fields) noexcept;
 /// Copies a reply into owned strings.
 [[nodiscard]] OwnedReply Own(const Reply& r);
 

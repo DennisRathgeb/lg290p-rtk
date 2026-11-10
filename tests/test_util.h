@@ -14,7 +14,9 @@ namespace lgrtk::test {
 /// "$<body>*HH" with the correct checksum (no CR/LF).
 inline std::string Nmea(std::string_view body) {
   unsigned sum = 0;
-  for (char c : body) sum ^= static_cast<unsigned char>(c);
+  for (char c : body) {
+    sum ^= static_cast<unsigned char>(c);
+  }
   static const char* const kHex = "0123456789ABCDEF";
   std::string s = "$";
   s += body;
@@ -26,7 +28,8 @@ inline std::string Nmea(std::string_view body) {
 
 /// A complete RTCM3 frame (0xD3, length, payload, CRC-24Q) around `payload`.
 inline std::vector<uint8_t> Rtcm(const std::vector<uint8_t>& payload) {
-  std::vector<uint8_t> f{0xD3, static_cast<uint8_t>((payload.size() >> 8) & 0x03),
+  std::vector<uint8_t> f{0xD3,
+                         static_cast<uint8_t>((payload.size() >> 8) & 0x03),
                          static_cast<uint8_t>(payload.size() & 0xFF)};
   f.insert(f.end(), payload.begin(), payload.end());
   const uint32_t crc = Crc24q(f);
@@ -36,7 +39,9 @@ inline std::vector<uint8_t> Rtcm(const std::vector<uint8_t>& payload) {
   return f;
 }
 
-inline std::vector<uint8_t> Bytes(std::string_view s) { return {s.begin(), s.end()}; }
+inline std::vector<uint8_t> Bytes(std::string_view s) {
+  return {s.begin(), s.end()};
+}
 
 }  // namespace lgrtk::test
 

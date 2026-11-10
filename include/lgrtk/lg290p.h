@@ -19,9 +19,11 @@ namespace lgrtk::lg290p {
 
 /// One command ready to send.
 struct Command {
-  std::string text;         ///< "$...*HH\r\n"
-  std::string reply_to;     ///< reply sentence name; empty: the receiver does not answer
-  std::string match_value;  ///< first reply value that identifies the answer (MSGRATE reads)
+  std::string text;  ///< "$...*HH\r\n"
+  std::string
+      reply_to;  ///< reply sentence name; empty: the receiver does not answer
+  std::string match_value;   ///< first reply value that identifies the answer
+                             ///< (MSGRATE reads)
   bool needs_reset = false;  ///< takes effect only after save + reset
   bool is_write = false;     ///< changes receiver state
 };
@@ -29,9 +31,11 @@ struct Command {
 /// "$<body>*HH\r\n".
 [[nodiscard]] std::string BuildCommand(std::string_view body);
 /// True when `reply` answers `cmd`.
-[[nodiscard]] bool Matches(const Command& cmd, const nmea::Reply& reply) noexcept;
+[[nodiscard]] bool Matches(const Command& cmd,
+                           const nmea::Reply& reply) noexcept;
 /// Same for an owned reply.
-[[nodiscard]] bool Matches(const Command& cmd, const nmea::OwnedReply& reply) noexcept;
+[[nodiscard]] bool Matches(const Command& cmd,
+                           const nmea::OwnedReply& reply) noexcept;
 
 /// Receiver operating mode.
 enum class Mode { kRover = 1, kBase = 2 };
@@ -59,7 +63,8 @@ struct RtkSettings {
 };
 /// Enabled constellations (PQTMCFGCNST).
 struct Constellations {
-  bool gps = true, glonass = true, galileo = true, beidou = true, qzss = true, navic = true;  ///< on/off
+  bool gps = true, glonass = true, galileo = true, beidou = true, qzss = true,
+       navic = true;  ///< on/off
   bool operator==(const Constellations&) const = default;
 };
 /// PPS output (PQTMCFGPPS, index 1).
@@ -73,15 +78,15 @@ struct PpsSettings {
 
 /// Desired (or read-back) receiver settings. Unset fields are not managed.
 struct ReceiverConfig {
-  std::optional<int> fix_interval_ms;           ///< 50..1000 ms (needs reset)
-  std::vector<MessageRate> message_rates;       ///< per message
-  std::optional<NmeaDecimals> nmea_decimals;    ///< NMEA precision
-  std::optional<RtkSettings> rtk;               ///< RTK engine
+  std::optional<int> fix_interval_ms;            ///< 50..1000 ms (needs reset)
+  std::vector<MessageRate> message_rates;        ///< per message
+  std::optional<NmeaDecimals> nmea_decimals;     ///< NMEA precision
+  std::optional<RtkSettings> rtk;                ///< RTK engine
   std::optional<Constellations> constellations;  ///< (needs reset)
-  std::optional<double> elevation_mask_deg;     ///< 0..90
-  std::optional<double> cnr_mask_dbhz;          ///< 0..99
-  std::optional<Mode> receiver_mode;            ///< rover/base (needs reset)
-  std::optional<PpsSettings> pps;               ///< PPS
+  std::optional<double> elevation_mask_deg;      ///< 0..90
+  std::optional<double> cnr_mask_dbhz;           ///< 0..99
+  std::optional<Mode> receiver_mode;             ///< rover/base (needs reset)
+  std::optional<PpsSettings> pps;                ///< PPS
 };
 
 /// A sensible rover configuration: 10 Hz, high-precision NMEA, GGA/RMC/GST/
@@ -92,7 +97,8 @@ struct ReceiverConfig {
 [[nodiscard]] Command QueryUniqueId();
 [[nodiscard]] std::optional<Command> SetFixRate(int interval_ms);
 [[nodiscard]] Command GetFixRate();
-[[nodiscard]] Command SetMessageRate(std::string_view msg, int rate, int version = 0);
+[[nodiscard]] Command SetMessageRate(std::string_view msg, int rate,
+                                     int version = 0);
 [[nodiscard]] Command GetMessageRate(std::string_view msg, int version = 0);
 [[nodiscard]] Command SetNmeaDecimals(const NmeaDecimals& d);
 [[nodiscard]] Command GetNmeaDecimals();
@@ -131,7 +137,8 @@ void ApplyReadReply(const nmea::OwnedReply& reply, ReceiverConfig& have);
 /// Writes needed to get from `have` to `want` (unknown current values are
 /// written), followed by SaveParams when anything changed and SoftwareReset
 /// when a changed setting needs one. Empty when nothing differs.
-[[nodiscard]] std::vector<Command> PlanConfig(const ReceiverConfig& want, const ReceiverConfig& have);
+[[nodiscard]] std::vector<Command> PlanConfig(const ReceiverConfig& want,
+                                              const ReceiverConfig& have);
 
 }  // namespace lgrtk::lg290p
 

@@ -44,17 +44,20 @@ class Socket {
   }
   ~Socket() { Close(); }
   void Close() {
-    if (fd_ >= 0) ::close(fd_);
+    if (fd_ >= 0) {
+      ::close(fd_);
+    }
     fd_ = -1;
   }
-  [[nodiscard]] int fd() const { return fd_; }
-  [[nodiscard]] bool ok() const { return fd_ >= 0; }
+  [[nodiscard]] int Fd() const { return fd_; }
+  [[nodiscard]] bool Ok() const { return fd_ >= 0; }
 
  private:
   int fd_ = -1;
 };
 
-Socket Connect(const std::string& host, int port, int timeout_ms, std::string& err) {
+Socket Connect(const std::string& host, int port, int timeout_ms,
+               std::string& err) {
   addrinfo hints{};
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
@@ -66,21 +69,26 @@ Socket Connect(const std::string& host, int port, int timeout_ms, std::string& e
     return {};
   }
   Socket out;
-  for (addrinfo* a = res; a != nullptr && !out.ok(); a = a->ai_next) {
-    Socket s(::socket(a->ai_family, a->ai_socktype | SOCK_NONBLOCK | SOCK_CLOEXEC, a->ai_protocol));
-    if (!s.ok()) continue;
-    if (::connect(s.fd(), a->ai_addr, a->ai_addrlen) != 0 && errno != EINPROGRESS) {
+  for (addrinfo* a = res; a != nullptr && !out.Ok(); a = a->ai_next) {
+    Socket s(::socket(a->ai_family,
+                      a->ai_socktype | SOCK_NONBLOCK | SOCK_CLOEXEC,
+                      a->ai_protocol));
+    if (!s.Ok()) {
+      continue;
+    }
+    if (::connect(s.Fd(), a->ai_addr, a->ai_addrlen) != 0 &&
+        errno != EINPROGRESS) {
       err = host + ":" + service + ": " + std::strerror(errno);
       continue;
     }
-    pollfd p{s.fd(), POLLOUT, 0};
+    pollfd p{s.Fd(), POLLOUT, 0};
     if (::poll(&p, 1, timeout_ms) <= 0) {
       err = host + ":" + service + ": connect timeout";
       continue;
     }
     int soerr = 0;
     socklen_t len = sizeof soerr;
-    ::getsockopt(s.fd(), SOL_SOCKET, SO_ERROR, &soerr, &len);
+    ::getsockopt(s.Fd(), SOL_SOCKET, SO_ERROR, &soerr, &len);
     if (soerr != 0) {
       err = host + ":" + service + ": " + std::strerror(soerr);
       continue;
@@ -95,13 +103,16 @@ bool SendAll(int fd, std::string_view s) {
   size_t done = 0;
   const int64_t deadline = NowNs() + 2'000'000'000;
   while (done < s.size()) {
-    const ssize_t n = ::send(fd, s.data() + done, s.size() - done, MSG_NOSIGNAL);
+    const ssize_t n =
+        ::send(fd, s.data() + done, s.size() - done, MSG_NOSIGNAL);
     if (n > 0) {
       done += static_cast<size_t>(n);
       continue;
     }
     if (n < 0 && (errno == EAGAIN || errno == EINTR)) {
-      if (NowNs() > deadline) return false;
+      if (NowNs() > deadline) {
+        return false;
+      }
       pollfd p{fd, POLLOUT, 0};
       ::poll(&p, 1, 50);
       continue;
@@ -112,7 +123,9 @@ bool SendAll(int fd, std::string_view s) {
 }
 
 std::string Lower(std::string s) {
-  for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  for (char& c : s) {
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  }
   return s;
 }
 
@@ -127,7 +140,9 @@ class Dechunker {
           const char c = in[i++];
           if (c == '\n') {
             size_t n = 0;
-            if (std::sscanf(line_.c_str(), "%zx", &n) != 1) return false;
+            if (std::sscanf(line_.c_str(), "%zx", &n) != 1) {
+              return false;
+            }
             line_.clear();
             if (n == 0) {
               state_ = kDone;
@@ -136,7 +151,9 @@ class Dechunker {
               state_ = kData;
             }
           } else if (c != '\r') {
-            if (line_.size() > 32) return false;
+            if (line_.size() > 32) {
+              return false;
+            }
             line_ += c;
           }
           break;
@@ -146,11 +163,15 @@ class Dechunker {
           out(in.substr(i, take));
           i += take;
           remaining_ -= take;
-          if (remaining_ == 0) state_ = kCrlf;
+          if (remaining_ == 0) {
+            state_ = kCrlf;
+          }
           break;
         }
         case kCrlf:
-          if (in[i++] == '\n') state_ = kSize;
+          if (in[i++] == '\n') {
+            state_ = kSize;
+          }
           break;
         case kDone:
           return true;
@@ -167,7 +188,8 @@ class Dechunker {
 
 std::string UserAgent() { return std::string("NTRIP lgrtk/") + kVersion; }
 
-void AppendDegMin(std::string& s, double deg, int deg_digits, char pos, char neg) {
+void AppendDegMin(std::string& s, double deg, int deg_digits, char pos,
+                  char neg) {
   const char hemi = deg < 0 ? neg : pos;
   deg = std::fabs(deg);
   int d = static_cast<int>(deg);
@@ -211,7 +233,8 @@ std::string Base64(std::string_view in) {
   std::string out;
   size_t i = 0;
   for (; i + 2 < in.size(); i += 3) {
-    const uint32_t v = (static_cast<uint8_t>(in[i]) << 16) | (static_cast<uint8_t>(in[i + 1]) << 8) |
+    const uint32_t v = (static_cast<uint8_t>(in[i]) << 16) |
+                       (static_cast<uint8_t>(in[i + 1]) << 8) |
                        static_cast<uint8_t>(in[i + 2]);
     out += kTable[(v >> 18) & 63];
     out += kTable[(v >> 12) & 63];
@@ -224,7 +247,8 @@ std::string Base64(std::string_view in) {
     out += kTable[(v >> 12) & 63];
     out += "==";
   } else if (i + 2 == in.size()) {
-    const uint32_t v = (static_cast<uint8_t>(in[i]) << 16) | (static_cast<uint8_t>(in[i + 1]) << 8);
+    const uint32_t v = (static_cast<uint8_t>(in[i]) << 16) |
+                       (static_cast<uint8_t>(in[i + 1]) << 8);
     out += kTable[(v >> 18) & 63];
     out += kTable[(v >> 12) & 63];
     out += kTable[(v >> 6) & 63];
@@ -262,11 +286,14 @@ std::string BuildGga(const Fix& f) {
     default:
       q = f.has_position ? 1 : 0;
   }
-  std::snprintf(buf, sizeof buf, ",%d,%02d,%.1f,%.3f,M,%.3f,M,,", q, f.sats, static_cast<double>(f.hdop),
-                f.h_ell_m - f.geoid_sep_m, f.geoid_sep_m);
+  std::snprintf(buf, sizeof buf, ",%d,%02d,%.1f,%.3f,M,%.3f,M,,", q, f.sats,
+                static_cast<double>(f.hdop), f.h_ell_m - f.geoid_sep_m,
+                f.geoid_sep_m);
   body += buf;
   unsigned sum = 0;
-  for (char c : body) sum ^= static_cast<unsigned char>(c);
+  for (char c : body) {
+    sum ^= static_cast<unsigned char>(c);
+  }
   std::snprintf(buf, sizeof buf, "*%02X\r\n", sum & 0xFF);
   return "$" + body + buf;
 }
@@ -277,22 +304,30 @@ NtripClient::NtripClient(NtripOptions options, CorrectionSink& sink)
 NtripClient::~NtripClient() { Stop(); }
 
 void NtripClient::SetPosition(const Fix& fix) {
-  if (!fix.has_position) return;
+  if (!fix.has_position) {
+    return;
+  }
   std::lock_guard lk(mu_);
   position_ = fix;
 }
 
 bool NtripClient::Start() {
-  if (running_.exchange(true)) return false;
+  if (running_.exchange(true)) {
+    return false;
+  }
   stop_ = false;
   thread_ = std::thread([this] { Run(); });
   return true;
 }
 
 void NtripClient::Stop() {
-  if (!running_) return;
+  if (!running_) {
+    return;
+  }
   stop_ = true;
-  if (thread_.joinable()) thread_.join();
+  if (thread_.joinable()) {
+    thread_.join();
+  }
   running_ = false;
 }
 
@@ -308,18 +343,27 @@ void NtripClient::SetState(NtripState s, const std::string& reason) {
   {
     std::lock_guard lk(mu_);
     from = status_.state;
-    if (s == NtripState::kAuthFailed || s == NtripState::kBackoff || s == NtripState::kStalled) {
-      if (!reason.empty()) status_.last_error = reason;
+    if (s == NtripState::kAuthFailed || s == NtripState::kBackoff ||
+        s == NtripState::kStalled) {
+      if (!reason.empty()) {
+        status_.last_error = reason;
+      }
     }
-    if (from == s) return;
+    if (from == s) {
+      return;
+    }
     status_.state = s;
   }
-  if (on_status_) on_status_(from, s, reason);
+  if (on_status_) {
+    on_status_(from, s, reason);
+  }
 }
 
 bool NtripClient::BackoffWait() {
   const int64_t until = NowNs() + int64_t{backoff_ms_} * 1'000'000;
-  while (!StopRequested() && NowNs() < until) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  while (!StopRequested() && NowNs() < until) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
   backoff_ms_ = std::min(backoff_ms_ * 2, opt_.backoff_max_ms);
   return !StopRequested();
 }
@@ -334,13 +378,20 @@ void NtripClient::Run() {
           std::lock_guard lk(mu_);
           have = position_.has_value();
         }
-        if (have) break;
-        SetState(NtripState::kNoPosition, "waiting for a rover position to send as GGA");
+        if (have) {
+          break;
+        }
+        SetState(NtripState::kNoPosition,
+                 "waiting for a rover position to send as GGA");
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
       }
-      if (!have) break;
+      if (!have) {
+        break;
+      }
     }
-    SetState(NtripState::kConnecting, opt_.host + ":" + std::to_string(opt_.port) + "/" + opt_.mountpoint);
+    SetState(
+        NtripState::kConnecting,
+        opt_.host + ":" + std::to_string(opt_.port) + "/" + opt_.mountpoint);
     Session();
     NtripState st;
     {
@@ -348,17 +399,23 @@ void NtripClient::Run() {
       st = status_.state;
     }
     if (st == NtripState::kAuthFailed) {
-      while (!StopRequested()) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+      while (!StopRequested()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+      }
       break;
     }
-    if (StopRequested()) break;
+    if (StopRequested()) {
+      break;
+    }
     std::string err;
     {
       std::lock_guard lk(mu_);
       err = status_.last_error;
     }
     SetState(NtripState::kBackoff, err);
-    if (!BackoffWait()) break;
+    if (!BackoffWait()) {
+      break;
+    }
   }
   SetState(NtripState::kStopped, "stopped");
 }
@@ -370,7 +427,7 @@ void NtripClient::Session() {
   };
   std::string err;
   Socket sock = Connect(opt_.host, opt_.port, opt_.connect_timeout_ms, err);
-  if (!sock.ok()) {
+  if (!sock.Ok()) {
     fail(err);
     return;
   }
@@ -380,25 +437,33 @@ void NtripClient::Session() {
     pos = position_;
   }
   const std::string gga = opt_.send_gga && pos ? BuildGga(*pos) : std::string();
-  std::string req = "GET /" + opt_.mountpoint + (opt_.version == 1 ? " HTTP/1.0\r\n" : " HTTP/1.1\r\n");
+  std::string req = "GET /" + opt_.mountpoint +
+                    (opt_.version == 1 ? " HTTP/1.0\r\n" : " HTTP/1.1\r\n");
   req += "User-Agent: " + UserAgent() + "\r\n";
   if (opt_.version != 1) {
     req += "Host: " + opt_.host + ":" + std::to_string(opt_.port) + "\r\n";
     req += "Ntrip-Version: Ntrip/2.0\r\n";
-    if (!gga.empty()) req += "Ntrip-GGA: " + gga.substr(0, gga.size() - 2) + "\r\n";
+    if (!gga.empty()) {
+      req += "Ntrip-GGA: " + gga.substr(0, gga.size() - 2) + "\r\n";
+    }
     req += "Connection: close\r\n";
   }
-  if (!opt_.user.empty()) req += "Authorization: Basic " + Base64(opt_.user + ":" + opt_.password) + "\r\n";
+  if (!opt_.user.empty()) {
+    req += "Authorization: Basic " + Base64(opt_.user + ":" + opt_.password) +
+           "\r\n";
+  }
   req += "\r\n";
-  if (!SendAll(sock.fd(), req)) {
+  if (!SendAll(sock.Fd(), req)) {
     fail("cannot send request to " + opt_.host);
     return;
   }
 
-  // Response header: "ICY 200 OK\r\n" (v1) or an HTTP header ending in a blank line.
+  // Response header: "ICY 200 OK\r\n" (v1) or an HTTP header ending in a blank
+  // line.
   std::string head;
   std::array<char, 4096> buf{};
-  const int64_t deadline = NowNs() + int64_t{opt_.connect_timeout_ms} * 1'000'000;
+  const int64_t deadline =
+      NowNs() + int64_t{opt_.connect_timeout_ms} * 1'000'000;
   size_t header_end = std::string::npos;
   bool icy = false;
   while (!StopRequested()) {
@@ -416,23 +481,29 @@ void NtripClient::Session() {
       fail("no response header from " + opt_.host);
       return;
     }
-    pollfd p{sock.fd(), POLLIN, 0};
-    if (::poll(&p, 1, 50) <= 0) continue;
-    const ssize_t n = ::recv(sock.fd(), buf.data(), buf.size(), 0);
+    pollfd p{sock.Fd(), POLLIN, 0};
+    if (::poll(&p, 1, 50) <= 0) {
+      continue;
+    }
+    const ssize_t n = ::recv(sock.Fd(), buf.data(), buf.size(), 0);
     if (n <= 0) {
-      fail(head.empty() ? "caster closed the connection" : "truncated response: " + head.substr(0, 40));
+      fail(head.empty() ? "caster closed the connection"
+                        : "truncated response: " + head.substr(0, 40));
       return;
     }
     head.append(buf.data(), static_cast<size_t>(n));
   }
-  if (StopRequested()) return;
+  if (StopRequested()) {
+    return;
+  }
 
   bool chunked = false;
   int http = 0;
   if (!icy) {
     const std::string status_line = head.substr(0, head.find("\r\n"));
     if (status_line.starts_with("SOURCETABLE")) {
-      fail("mountpoint '" + opt_.mountpoint + "' not found (the caster answered with its sourcetable)");
+      fail("mountpoint '" + opt_.mountpoint +
+           "' not found (the caster answered with its sourcetable)");
       return;
     }
     if (std::sscanf(status_line.c_str(), "HTTP/%*d.%*d %d", &http) != 1) {
@@ -446,7 +517,8 @@ void NtripClient::Session() {
     if (http == 401) {
       {
         std::lock_guard lk(mu_);
-        status_.last_error = "HTTP 401 Unauthorized for mountpoint '" + opt_.mountpoint +
+        status_.last_error = "HTTP 401 Unauthorized for mountpoint '" +
+                             opt_.mountpoint +
                              "': check user name and password";
       }
       SetState(NtripState::kAuthFailed, "HTTP 401 Unauthorized");
@@ -456,9 +528,11 @@ void NtripClient::Session() {
       fail("HTTP " + std::to_string(http) + " from caster: " + status_line);
       return;
     }
-    chunked = Lower(head.substr(0, header_end)).find("transfer-encoding: chunked") != std::string::npos;
+    chunked =
+        Lower(head.substr(0, header_end)).find("transfer-encoding: chunked") !=
+        std::string::npos;
   }
-  if (opt_.version == 1 && !gga.empty() && !SendAll(sock.fd(), gga)) {
+  if (opt_.version == 1 && !gga.empty() && !SendAll(sock.Fd(), gga)) {
     fail("cannot send GGA");
     return;
   }
@@ -473,12 +547,16 @@ void NtripClient::Session() {
   StreamFramer framer;
   Dechunker dechunk;
   auto forward = [&](std::string_view data) {
-    framer.Feed(std::span(reinterpret_cast<const uint8_t*>(data.data()), data.size()), [&](const Frame& f) {
-      if (f.kind != FrameKind::kRtcm) return;
-      sink_.Inject(f.bytes);
-      std::lock_guard lk(mu_);
-      ++status_.frames;
-    });
+    framer.Feed(
+        std::span(reinterpret_cast<const uint8_t*>(data.data()), data.size()),
+        [&](const Frame& f) {
+          if (f.kind != FrameKind::kRtcm) {
+            return;
+          }
+          sink_.Inject(f.bytes);
+          std::lock_guard lk(mu_);
+          ++status_.frames;
+        });
   };
   auto consume = [&](std::string_view data) {
     {
@@ -493,7 +571,8 @@ void NtripClient::Session() {
     }
     return dechunk.Feed(data, forward);
   };
-  if (head.size() > header_end && !consume(std::string_view(head).substr(header_end))) {
+  if (head.size() > header_end &&
+      !consume(std::string_view(head).substr(header_end))) {
     fail("bad chunked encoding");
     return;
   }
@@ -507,7 +586,7 @@ void NtripClient::Session() {
         std::lock_guard lk(mu_);
         pos = position_;
       }
-      if (pos && !SendAll(sock.fd(), BuildGga(*pos))) {
+      if (pos && !SendAll(sock.Fd(), BuildGga(*pos))) {
         fail("connection lost while sending GGA");
         return;
       }
@@ -518,13 +597,16 @@ void NtripClient::Session() {
       last = last_data_ns_;
     }
     if (now - last > int64_t{opt_.stall_after_ms} * 1'000'000) {
-      const std::string why = "no corrections for " + std::to_string(opt_.stall_after_ms) + " ms";
+      const std::string why =
+          "no corrections for " + std::to_string(opt_.stall_after_ms) + " ms";
       SetState(NtripState::kStalled, why);
       return;
     }
-    pollfd p{sock.fd(), POLLIN, 0};
-    if (::poll(&p, 1, 50) <= 0) continue;
-    const ssize_t n = ::recv(sock.fd(), buf.data(), buf.size(), 0);
+    pollfd p{sock.Fd(), POLLIN, 0};
+    if (::poll(&p, 1, 50) <= 0) {
+      continue;
+    }
+    const ssize_t n = ::recv(sock.Fd(), buf.data(), buf.size(), 0);
     if (n <= 0) {
       fail("caster closed the connection");
       return;
@@ -536,26 +618,36 @@ void NtripClient::Session() {
   }
 }
 
-std::optional<std::string> NtripClient::FetchSourcetable(const std::string& host, int port,
-                                                         int version, std::string& err) {
+std::optional<std::string> NtripClient::FetchSourcetable(
+    const std::string& host, int port, int version, std::string& err) {
   Socket sock = Connect(host, port, 5000, err);
-  if (!sock.ok()) return std::nullopt;
+  if (!sock.Ok()) {
+    return std::nullopt;
+  }
   std::string req = version == 1 ? "GET / HTTP/1.0\r\n" : "GET / HTTP/1.1\r\n";
   req += "User-Agent: " + UserAgent() + "\r\n";
-  if (version != 1) req += "Host: " + host + ":" + std::to_string(port) + "\r\nNtrip-Version: Ntrip/2.0\r\n";
+  if (version != 1) {
+    req += "Host: " + host + ":" + std::to_string(port) +
+           "\r\nNtrip-Version: Ntrip/2.0\r\n";
+  }
   req += "Connection: close\r\n\r\n";
-  if (!SendAll(sock.fd(), req)) {
+  if (!SendAll(sock.Fd(), req)) {
     err = "cannot send request";
     return std::nullopt;
   }
   std::string all;
   std::array<char, 4096> buf{};
   const int64_t deadline = NowNs() + 10'000'000'000;
-  while (NowNs() < deadline && all.find("ENDSOURCETABLE") == std::string::npos) {
-    pollfd p{sock.fd(), POLLIN, 0};
-    if (::poll(&p, 1, 100) <= 0) continue;
-    const ssize_t n = ::recv(sock.fd(), buf.data(), buf.size(), 0);
-    if (n <= 0) break;
+  while (NowNs() < deadline &&
+         all.find("ENDSOURCETABLE") == std::string::npos) {
+    pollfd p{sock.Fd(), POLLIN, 0};
+    if (::poll(&p, 1, 100) <= 0) {
+      continue;
+    }
+    const ssize_t n = ::recv(sock.Fd(), buf.data(), buf.size(), 0);
+    if (n <= 0) {
+      break;
+    }
     all.append(buf.data(), static_cast<size_t>(n));
   }
   const size_t end = all.find("\r\n\r\n");
@@ -564,7 +656,8 @@ std::optional<std::string> NtripClient::FetchSourcetable(const std::string& host
     return std::nullopt;
   }
   std::string body = all.substr(end + 4);
-  if (Lower(all.substr(0, end)).find("transfer-encoding: chunked") != std::string::npos) {
+  if (Lower(all.substr(0, end)).find("transfer-encoding: chunked") !=
+      std::string::npos) {
     std::string plain;
     Dechunker d;
     d.Feed(body, [&](std::string_view s) { plain += s; });

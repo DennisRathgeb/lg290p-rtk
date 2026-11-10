@@ -12,19 +12,25 @@ namespace {
 
 // Example lines from the Quectel LG290P(03) protocol specification v1.1.
 constexpr const char* kGga =
-    "$GNGGA,025159.000,3149.29993210,N,11706.91264104,E,1,16,1.26,97.250,M,-4.945,M,,*5A";
+    "$GNGGA,025159.000,3149.29993210,N,11706.91264104,E,1,16,1.26,97.250,M,-4."
+    "945,M,,*5A";
 constexpr const char* kRmc =
-    "$GNRMC,025159.000,A,3149.29993210,N,11706.91264104,E,0.001,043.43,291123,,,A,V*33";
+    "$GNRMC,025159.000,A,3149.29993210,N,11706.91264104,E,0.001,043.43,291123,,"
+    ",A,V*33";
 constexpr const char* kGst =
     "$GNGST,013902.500,5.387,3.734,2.172,143.088,2.836,3.258,9.274*74";
-constexpr const char* kGsv = "$GPGSV,2,1,05,10,77,300,36,12,40,082,31,23,58,153,35,25,46,137,33,1*67";
-constexpr const char* kGsa = "$GNGSA,A,3,10,12,23,25,32,,,,,,,,2.38,1.26,2.01,1*0B";
+constexpr const char* kGsv =
+    "$GPGSV,2,1,05,10,77,300,36,12,40,082,31,23,58,153,35,25,46,137,33,1*67";
+constexpr const char* kGsa =
+    "$GNGSA,A,3,10,12,23,25,32,,,,,,,,2.38,1.26,2.01,1*0B";
 constexpr const char* kVtg = "$GNVTG,043.43,T,,M,0.001,N,0.001,K,A*23";
 constexpr const char* kZda = "$GNZDA,102210.014,23,12,2021,00,00*4E";
 constexpr const char* kEpe = "$PQTMEPE,2,1.000,1.000,1.000,1.414,1.732*52";
-constexpr const char* kVerno = "$PQTMVERNO,LG290P03AANR01A03S,2024/04/30,10:53:07*18";
+constexpr const char* kVerno =
+    "$PQTMVERNO,LG290P03AANR01A03S,2024/04/30,10:53:07*18";
 constexpr const char* kSvin =
-    "$PQTMSVINSTATUS,1,1000,1,,01,20,100,-2484434.3645,4875976.9741,3266161.3412,1.2415*3C";
+    "$PQTMSVINSTATUS,1,1000,1,,01,20,100,-2484434.3645,4875976.9741,3266161."
+    "3412,1.2415*3C";
 
 TEST(NmeaTest, Gga) {
   const auto g = ParseGga(kGga);
@@ -49,7 +55,9 @@ TEST(NmeaTest, GgaEmptyFieldsFromCapture) {
 }
 
 TEST(NmeaTest, GgaWithDiffAge) {
-  const auto g = ParseGga(test::Nmea("GNGGA,120000.000,4637.80000000,N,00846.80000000,E,4,30,0.5,1950.0,M,49.1,M,1.2,0123"));
+  const auto g =
+      ParseGga(test::Nmea("GNGGA,120000.000,4637.80000000,N,00846.80000000,E,4,"
+                          "30,0.5,1950.0,M,49.1,M,1.2,0123"));
   ASSERT_TRUE(g);
   EXPECT_EQ(g->quality, 4);
   EXPECT_TRUE(g->has_diff_age);
@@ -59,7 +67,9 @@ TEST(NmeaTest, GgaWithDiffAge) {
 
 TEST(NmeaTest, WrongTypeAndBadChecksumRejected) {
   EXPECT_FALSE(ParseGga(kRmc));
-  EXPECT_FALSE(ParseGga("$GNGGA,025159.000,3149.29993210,N,11706.91264104,E,1,16,1.26,97.250,M,-4.945,M,,*00"));
+  EXPECT_FALSE(
+      ParseGga("$GNGGA,025159.000,3149.29993210,N,11706.91264104,E,1,16,1.26,"
+               "97.250,M,-4.945,M,,*00"));
 }
 
 TEST(NmeaTest, Rmc) {

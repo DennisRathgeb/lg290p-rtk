@@ -55,7 +55,7 @@ struct Observer {
 
 ReceiverOptions Opts(const test::SimLg290p& sim) {
   ReceiverOptions o;
-  o.port = sim.path();
+  o.port = sim.Path();
   o.command_timeout_ms = 400;
   o.backoff_min_ms = 50;
   o.backoff_max_ms = 400;
@@ -78,7 +78,8 @@ TEST(ReceiverTest, StreamsFixes) {
   const auto latest = rx.LatestFix();
   ASSERT_TRUE(latest);
   EXPECT_EQ(latest->type, FixType::kSingle);
-  EXPECT_EQ(latest->sigma_source, SigmaSource::kGst);  // GST enabled by the default config
+  EXPECT_EQ(latest->sigma_source,
+            SigmaSource::kGst);  // GST enabled by the default config
   EXPECT_LT(st.last_fix_age_ns, 500'000'000);
   rx.Stop();
   EXPECT_EQ(rx.Status().state, State::kStopped);
@@ -93,10 +94,14 @@ TEST(ReceiverTest, PassesThroughEveryStateInOrder) {
   ASSERT_TRUE(obs.WaitState(rx, State::kStreaming, 5s));
   rx.Stop();
   std::vector<State> seq;
-  for (const auto& e : obs.events) seq.push_back(e.to);
-  // The default config changes the fix-independent settings only: save, no reset.
-  const std::vector<State> want = {State::kOpening, State::kIdentifying, State::kConfiguring,
-                                   State::kStreaming, State::kStopped};
+  for (const auto& e : obs.events) {
+    seq.push_back(e.to);
+  }
+  // The default config changes the fix-independent settings only: save, no
+  // reset.
+  const std::vector<State> want = {State::kOpening, State::kIdentifying,
+                                   State::kConfiguring, State::kStreaming,
+                                   State::kStopped};
   EXPECT_EQ(seq, want);
 }
 
@@ -128,7 +133,7 @@ TEST(ReceiverTest, ResetRequiringChangeResetsOnce) {
   obs.Attach(rx);
   ASSERT_TRUE(rx.Start());
   ASSERT_TRUE(obs.WaitState(rx, State::kStreaming, 8s));
-  EXPECT_EQ(sim.resets(), 1);
+  EXPECT_EQ(sim.Resets(), 1);
 }
 
 TEST(ReceiverTest, DetectsBaud) {
@@ -165,7 +170,8 @@ TEST(ReceiverTest, UnplugReplugRecovers) {
   sim.Unplug();
   ASSERT_TRUE(obs.WaitState(rx, State::kReconnecting, 1s));
   std::this_thread::sleep_for(300ms);
-  EXPECT_GT(rx.Status().last_fix_age_ns, 250'000'000);  // the old fix ages, it is not fresh
+  EXPECT_GT(rx.Status().last_fix_age_ns,
+            250'000'000);  // the old fix ages, it is not fresh
   const size_t before = obs.FixCount();
   sim.Replug();
   ASSERT_TRUE(obs.WaitState(rx, State::kStreaming, 3s));
@@ -196,7 +202,9 @@ TEST(ReceiverTest, InjectReachesDevice) {
   std::vector<uint8_t> payload(100, 0x42);
   payload[0] = 0x43;  // message 1077-ish, content irrelevant
   const auto frame = test::Rtcm(payload);
-  for (int i = 0; i < 5; ++i) ASSERT_TRUE(rx.Inject(frame));
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_TRUE(rx.Inject(frame));
+  }
   for (int i = 0; i < 50 && sim.RtcmReceived().size() < 5 * frame.size(); ++i) {
     std::this_thread::sleep_for(20ms);
   }
@@ -246,7 +254,8 @@ TEST(ReceiverTest, MissingPortKeepsRetrying) {
 }
 
 TEST(ReceiverTest, StaleBytesAtOpenAreDiscarded) {
-  // Bench 2026-11-10: the CH343 delivered an epoch from an hour earlier on open.
+  // Bench 2026-11-10: the CH343 delivered an epoch from an hour earlier on
+  // open.
   test::SimLg290p sim;
   sim.SetBurstOnOpen(true);
   Observer obs;
@@ -255,12 +264,15 @@ TEST(ReceiverTest, StaleBytesAtOpenAreDiscarded) {
   ASSERT_TRUE(rx.Start());
   ASSERT_TRUE(obs.WaitFixes(5, 5s));
   std::lock_guard lk(obs.mu);
-  for (const Fix& f : obs.fixes) EXPECT_GE(f.utc_s, 36000.0) << "old epoch published as fresh";
+  for (const Fix& f : obs.fixes) {
+    EXPECT_GE(f.utc_s, 36000.0) << "old epoch published as fresh";
+  }
 }
 
 TEST(ReceiverTest, RawRecorderWritesStream) {
   test::SimLg290p sim;
-  const auto path = std::filesystem::temp_directory_path() / "lgrtk-raw-test.bin";
+  const auto path =
+      std::filesystem::temp_directory_path() / "lgrtk-raw-test.bin";
   std::string err;
   auto rec = RawRecorder::Open(path.string(), err);
   ASSERT_TRUE(rec) << err;

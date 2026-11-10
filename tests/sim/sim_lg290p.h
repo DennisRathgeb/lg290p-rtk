@@ -28,7 +28,7 @@ class SimLg290p {
   SimLg290p(const SimLg290p&) = delete;
   SimLg290p& operator=(const SimLg290p&) = delete;
 
-  const std::string& path() const { return link_; }
+  const std::string& Path() const { return link_; }
   void Unplug();
   void Replug();
   void SetSilent(bool silent) { silent_ = silent; }
@@ -42,7 +42,7 @@ class SimLg290p {
   std::vector<std::string> Writes() const;
   void ClearWrites();
   std::vector<uint8_t> RtcmReceived() const;
-  int resets() const { return resets_; }
+  int Resets() const { return resets_; }
 
  private:
   void OpenPty();

@@ -37,7 +37,8 @@ TEST(LocalFrameTest, OneMetreEast) {
   EXPECT_NEAR(enu[1], 0.0, 1e-3);
   EXPECT_NEAR(enu[2], 0.0, 1e-3);
   // 1 m of longitude at 46.63 deg is about 1 / (111320 * cos(lat)) deg.
-  EXPECT_NEAR((lon - kLon) * 111320.0 * std::cos(kLat * M_PI / 180.0), 1.0, 0.01);
+  EXPECT_NEAR((lon - kLon) * 111320.0 * std::cos(kLat * M_PI / 180.0), 1.0,
+              0.01);
 }
 
 TEST(LocalFrameTest, RoundTripAtFiveKilometres) {
@@ -49,7 +50,9 @@ TEST(LocalFrameTest, RoundTripAtFiveKilometres) {
   f.FromEnu(in, lat, lon, h);
   double out[3];
   f.ToEnu(lat, lon, h, out);
-  for (int i = 0; i < 3; ++i) EXPECT_NEAR(out[i], in[i], 1e-4);
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_NEAR(out[i], in[i], 1e-4);
+  }
 }
 
 #ifdef LGRTK_HAVE_PROJ
@@ -97,8 +100,13 @@ TEST(ProjectionTest, ForwardIsFast) {
   double out[3];
   constexpr int kN = 100000;
   const auto t0 = std::chrono::steady_clock::now();
-  for (int i = 0; i < kN; ++i) p->Forward(kLat + i * 1e-7, kLon, 2000.0, out);
-  const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / kN;
+  for (int i = 0; i < kN; ++i) {
+    p->Forward(kLat + i * 1e-7, kLon, 2000.0, out);
+  }
+  const double us = std::chrono::duration<double, std::micro>(
+                        std::chrono::steady_clock::now() - t0)
+                        .count() /
+                    kN;
   EXPECT_LT(us, 10.0) << us << " us per point";
 }
 #endif
