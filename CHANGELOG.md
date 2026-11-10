@@ -17,6 +17,8 @@ The daemon: the receiver for every program on the machine.
   sysusers file, PKGBUILD, CMake install of all of them.
 - Simulator sends GSA/GSV; end-to-end daemon test (gpsd client, raw tap, ctl, unplug/replug,
   SIGTERM) in CI.
+- `tools/record-session.sh`: record a session (raw bytes, gpsd reports, status) through lgrtkd.
+- First outdoor run (autonomous): 10 Hz, 22 satellites, GST with 3 decimals on firmware A06S.
 - README hero photo of the module with the Q39 antenna; board diagram and pinout.
 
 ## v0.1.0 (2026-11-10)

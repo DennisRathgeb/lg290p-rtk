@@ -195,6 +195,18 @@ lgrtk ctl apply-default          # restart the receiver with the default rover c
 `--socket PATH` selects another socket. A factory reset is refused over the socket: stop the
 daemon and use `lgrtk reset factory --yes`.
 
+## Recording a session
+
+`tools/record-session.sh NAME [MOUNT USER [HOST]]` runs lgrtkd read-only (with NTRIP when a
+mountpoint is given, password in `~/.ntrip-pw`) and records until Ctrl-C into
+`~/data/bench/<date>-NAME/`: `raw.bin` (every receiver byte, replayable), `gpsd.jsonl` (every
+report with arrival time), `status.log` (`lgrtk ctl status` every 10 s), `lgrtkd.log` and your
+`notes.txt`. It prints one status line every 10 s (fix type, epx/epv, correction age) and finds
+the board by its USB id, whatever `ttyACM` number it gets.
+
+**Recordings contain your position.** Keep them out of git and out of issues; publish only
+derived numbers (rates, errors, satellite counts), or captures without a fix.
+
 ## Troubleshooting
 
 | Symptom | Cause |

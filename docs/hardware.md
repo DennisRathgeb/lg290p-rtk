@@ -75,6 +75,19 @@ No GST, no `$PQTMEPE`: error estimates must be switched on (`lgrtk config apply-
 Before it knows the time, the receiver reports the date as 1980-01-06 (GPS epoch); `lgrtk` treats
 that as "date unknown".
 
+### Outdoors, autonomous (bench, 2026-11-10, firmware A06S, Q39 antenna, walking)
+
+145 s recorded with `tools/record-session.sh` (no corrections yet; receiver warm, fix from the
+first epoch):
+
+- 10.0 Hz, 0 bad checksums, no reconnects; GGA with 8 decimals and GST/EPE after
+  `lgrtk config apply-default`.
+- Up to 22 satellites used (GPS, Galileo, GLONASS, BeiDou), C/N0 median 44–48 dB-Hz under open
+  sky: the Q39 and the board perform as expected.
+- Error estimate 1–2.5 m horizontal (95 %), 3–5 m vertical; the track of a 55 m walk at 1 m/s
+  is smooth.
+- GST has 3 decimals on this firmware, so RTK sigmas will resolve centimetres.
+
 ### The stale-bytes quirk (bench, 2026-11-10)
 
 When the port is opened, the CH343 can deliver bytes from the **previous** session that were
@@ -88,8 +101,8 @@ after every open; any other software reading this board should do the same.
 |---|---|---|
 | `GGA` | position, **fix quality** (1 single, 2 DGNSS, 4 RTK fixed, 5 RTK float), satellites, HDOP, altitude + geoid separation, **correction age**, station id | the only place RTK status appears in NMEA |
 | `RMC` | validity, speed, course, **date** | |
-| `GST` | per-axis 1-sigma (lat, lon, alt) and the error ellipse | off by default; older firmware printed one decimal only (*reported*) |
-| `$PQTMEPE` | estimated error north/east/down/2-D/3-D | version 2; enable with `PQTMCFGMSGRATE,W,PQTMEPE,1,2` |
+| `GST` | per-axis 1-sigma (lat, lon, alt) and the error ellipse | off by default; 3 decimals on A06S (**bench** 2026-11-10; older firmware printed one, *reported*) |
+| `$PQTMEPE` | estimated error north/east/down/2-D/3-D | version 2; enable with `PQTMCFGMSGRATE,W,PQTMEPE,1,2`. On A06S it adds nothing over GST: N = E always (the 2-D error split evenly), D = GST alt, 2-D = hypot(GST lat, lon) (**bench**); `lgrtk` prefers GST |
 | `$PQTMVERNO` | firmware string | answer to a query |
 | `$PQTMSVINSTATUS` | survey-in progress (base mode) | |
 | RTCM 3 MSM4/MSM7 | raw observations for post-processing | `RTCM3-107X` … rates |
