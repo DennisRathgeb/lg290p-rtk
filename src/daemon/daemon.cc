@@ -2,7 +2,6 @@
 #include "daemon/daemon.h"
 
 #include <poll.h>
-#include <signal.h>
 #include <sys/signalfd.h>
 #include <unistd.h>
 
@@ -13,16 +12,18 @@
 
 #include "daemon/gpsd_json.h"
 #include "daemon/sd_notify.h"
+#include "internal/clock.h"
+#include "internal/unique_fd.h"
 #include "lgrtk/lg290p.h"
 #include "lgrtk/version.h"
 
 namespace lgrtk::daemon {
 namespace {
 
-int64_t ClockNs(clockid_t id) {
+int64_t RealtimeNs() {
   timespec ts{};
-  clock_gettime(id, &ts);
-  return static_cast<int64_t>(ts.tv_sec) * 1000000000 + ts.tv_nsec;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  return static_cast<int64_t>(ts.tv_sec) * internal::kNsPerS + ts.tv_nsec;
 }
 
 void Log(const std::string& msg) { std::fprintf(stderr, "%s\n", msg.c_str()); }
@@ -30,6 +31,14 @@ void Log(const std::string& msg) { std::fprintf(stderr, "%s\n", msg.c_str()); }
 bool Active(State s) { return s == State::kStreaming || s == State::kStale; }
 
 }  // namespace
+
+sigset_t ShutdownSignals() {
+  sigset_t set;
+  sigemptyset(&set);
+  sigaddset(&set, SIGTERM);
+  sigaddset(&set, SIGINT);
+  return set;
+}
 
 Daemon::Daemon(DaemonConfig config) : cfg_(std::move(config)) {}
 
@@ -73,18 +82,14 @@ bool Daemon::Start(std::string* err) {
     ControlHandlers h;
     h.status = [this] { return StatusJson(); };
     h.reset = [this](const std::string& kind) {
-      lg290p::Command cmd = lg290p::SoftwareReset();
-      if (kind == "hot") {
-        cmd = lg290p::Restart(lg290p::Start::kHot);
-      } else if (kind == "warm") {
-        cmd = lg290p::Restart(lg290p::Start::kWarm);
-      } else if (kind == "cold") {
-        cmd = lg290p::Restart(lg290p::Start::kCold);
+      auto cmd = lg290p::RestartByName(kind);
+      if (!cmd) {  // ControlServer passes only known kinds
+        return nlohmann::json{{kFieldError, "unknown reset kind " + kind}};
       }
       Log("control: reset " + kind);
       // Restarts do not answer; the receiver's state machine notices the
       // restart, so there is nothing to wait for here.
-      (void)rx_->Send(cmd);
+      (void)rx_->Send(std::move(*cmd));
       return nlohmann::json{{"sent", kind}};
     };
     h.apply_default = [this] {
@@ -125,7 +130,7 @@ void Daemon::StartDevices() {
     // Arrival in system time: CLOCK_REALTIME now minus the time since the
     // epoch's last byte was read (CLOCK_MONOTONIC).
     const int64_t arrival =
-        ClockNs(CLOCK_REALTIME) - (ClockNs(CLOCK_MONOTONIC) - f.t_arrival_ns);
+        RealtimeNs() - (internal::MonotonicNs() - f.t_arrival_ns);
     if (ntrip_) {
       ntrip_->SetPosition(f);
     }
@@ -188,6 +193,10 @@ void Daemon::StopDevices() {
 }
 
 void Daemon::Stop() {
+  if (stopped_) {
+    return;
+  }
+  stopped_ = true;
   SdNotify("STOPPING=1");
   StopDevices();
 }
@@ -231,7 +240,7 @@ nlohmann::json Daemon::StatusJson() const {
     j["rtcm_injected"] = s.rtcm_injected;
     j["bad_nmea"] = s.framer.bad_nmea;
     j["last_fix_age_ms"] =
-        s.last_fix_age_ns < 0 ? -1 : s.last_fix_age_ns / 1000000;
+        s.last_fix_age_ns < 0 ? -1 : s.last_fix_age_ns / internal::kNsPerMs;
     j["last_error"] = s.last_error;
   }
   j["gpsd_clients"] = gpsd_->Clients();
@@ -252,17 +261,14 @@ nlohmann::json Daemon::StatusJson() const {
 }
 
 void Daemon::Run(bool handle_signals) {
-  int sfd = -1;
+  internal::UniqueFd sfd;
   if (handle_signals) {
-    sigset_t set;
-    sigemptyset(&set);
-    sigaddset(&set, SIGTERM);
-    sigaddset(&set, SIGINT);
-    sfd = signalfd(-1, &set, SFD_NONBLOCK | SFD_CLOEXEC);
-    if (sfd >= 0) {
-      loop_.Add(sfd, POLLIN, [this, sfd](short) {
+    const sigset_t set = ShutdownSignals();
+    sfd.Reset(signalfd(-1, &set, SFD_NONBLOCK | SFD_CLOEXEC));
+    if (sfd) {
+      loop_.Add(sfd.Get(), POLLIN, [this, fd = sfd.Get()](short) {
         signalfd_siginfo si{};
-        while (read(sfd, &si, sizeof si) == sizeof si) {
+        while (read(fd, &si, sizeof si) == sizeof si) {
           Log("lgrtkd: signal " + std::to_string(si.ssi_signo) +
               ", shutting down");
           loop_.Quit();
@@ -271,9 +277,8 @@ void Daemon::Run(bool handle_signals) {
     }
   }
   loop_.Run();
-  if (sfd >= 0) {
-    loop_.Remove(sfd);
-    close(sfd);
+  if (sfd) {
+    loop_.Remove(sfd.Get());
   }
 }
 

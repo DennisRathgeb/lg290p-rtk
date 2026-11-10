@@ -1,5 +1,6 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
-// Test helpers: a line-reading socket client and an event loop on a thread.
+// Test helpers: polling with a timeout, a line-reading socket client and an
+// event loop on a thread.
 #ifndef LGRTK_TESTS_DAEMON_NET_UTIL_H_
 #define LGRTK_TESTS_DAEMON_NET_UTIL_H_
 
@@ -7,11 +8,9 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
 
+#include <cerrno>
 #include <chrono>
-#include <cstring>
 #include <functional>
 #include <future>
 #include <optional>
@@ -19,37 +18,50 @@
 #include <thread>
 
 #include "daemon/event_loop.h"
+#include "internal/unique_fd.h"
+#include "internal/unix_socket.h"
 
 namespace lgrtk::test {
+
+/// Polls `done` until it returns true or `timeout` passes; returns its last
+/// value.
+inline bool WaitFor(
+    const std::function<bool()>& done,
+    std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
+  const auto end = std::chrono::steady_clock::now() + timeout;
+  while (!done()) {
+    if (std::chrono::steady_clock::now() >= end) {
+      return false;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  return true;
+}
 
 /// A blocking client socket with a line reader.
 class LineClient {
  public:
-  LineClient() = default;
-  ~LineClient() { Close(); }
-  LineClient(const LineClient&) = delete;
-  LineClient& operator=(const LineClient&) = delete;
-
   bool ConnectTcp(int port, int rcvbuf = 0) {
-    fd_ = socket(AF_INET, SOCK_STREAM, 0);
+    fd_.Reset(socket(AF_INET, SOCK_STREAM, 0));
     if (rcvbuf > 0) {
-      setsockopt(fd_, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof rcvbuf);
+      setsockopt(fd_.Get(), SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof rcvbuf);
     }
     sockaddr_in a{};
     a.sin_family = AF_INET;
     a.sin_port = htons(static_cast<uint16_t>(port));
     a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    return connect(fd_, reinterpret_cast<sockaddr*>(&a), sizeof a) == 0;
+    return connect(fd_.Get(), reinterpret_cast<sockaddr*>(&a), sizeof a) == 0;
   }
   bool ConnectUnix(const std::string& path) {
-    fd_ = socket(AF_UNIX, SOCK_STREAM, 0);
-    sockaddr_un a{};
-    a.sun_family = AF_UNIX;
-    std::strncpy(a.sun_path, path.c_str(), sizeof a.sun_path - 1);
-    return connect(fd_, reinterpret_cast<sockaddr*>(&a), sizeof a) == 0;
+    internal::UnixAddress a;
+    if (!internal::MakeUnixAddress(path, a)) {
+      return false;
+    }
+    fd_.Reset(socket(AF_UNIX, SOCK_STREAM, 0));
+    return connect(fd_.Get(), a.Get(), a.len) == 0;
   }
   void Write(const std::string& s) const {
-    (void)!send(fd_, s.data(), s.size(), MSG_NOSIGNAL);
+    (void)!send(fd_.Get(), s.data(), s.size(), MSG_NOSIGNAL);
   }
   /// Next line without "\r\n"; nullopt on timeout or EOF.
   std::optional<std::string> ReadLine(int timeout_ms = 2000) {
@@ -70,12 +82,12 @@ class LineClient {
       if (left <= 0) {
         return std::nullopt;
       }
-      pollfd p{fd_, POLLIN, 0};
+      pollfd p{fd_.Get(), POLLIN, 0};
       if (poll(&p, 1, static_cast<int>(left)) <= 0) {
         return std::nullopt;
       }
       char tmp[4096];
-      const ssize_t n = recv(fd_, tmp, sizeof tmp, 0);
+      const ssize_t n = recv(fd_.Get(), tmp, sizeof tmp, 0);
       if (n <= 0) {
         return std::nullopt;
       }
@@ -104,9 +116,9 @@ class LineClient {
                      std::chrono::milliseconds(timeout_ms);
     char tmp[65536];
     while (std::chrono::steady_clock::now() < end) {
-      pollfd p{fd_, POLLIN, 0};
+      pollfd p{fd_.Get(), POLLIN, 0};
       if (poll(&p, 1, 50) > 0) {
-        const ssize_t n = recv(fd_, tmp, sizeof tmp, 0);
+        const ssize_t n = recv(fd_.Get(), tmp, sizeof tmp, 0);
         if (n == 0 || (n < 0 && errno == ECONNRESET)) {
           return true;
         }
@@ -114,16 +126,11 @@ class LineClient {
     }
     return false;
   }
-  [[nodiscard]] int Fd() const { return fd_; }
-  void Close() {
-    if (fd_ >= 0) {
-      close(fd_);
-      fd_ = -1;
-    }
-  }
+  [[nodiscard]] int Fd() const { return fd_.Get(); }
+  void Close() { fd_.Reset(); }
 
  private:
-  int fd_ = -1;
+  internal::UniqueFd fd_;
   std::string buf_;
 };
 

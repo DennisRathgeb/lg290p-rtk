@@ -45,12 +45,12 @@ TEST(ChronyTest, SampleLayout) {
 
 TEST(ChronyTest, OffsetSign) {
   const int64_t fix_ns = *FixUnixNs(NoonFix());
-  const int64_t arrival = fix_ns + 80000000;  // read 80 ms after the epoch
+  const int64_t arrival = fix_ns + 80'000'000;  // read 80 ms after the epoch
   auto s = MakeChronySample(NoonFix(), arrival);
   ASSERT_TRUE(s);
   EXPECT_NEAR(s->offset, -0.080, 1e-9);
-  EXPECT_EQ(static_cast<int64_t>(s->tv.tv_sec), arrival / 1000000000);
-  EXPECT_EQ(static_cast<int64_t>(s->tv.tv_usec), (arrival / 1000) % 1000000);
+  EXPECT_EQ(static_cast<int64_t>(s->tv.tv_sec), arrival / 1'000'000'000);
+  EXPECT_EQ(static_cast<int64_t>(s->tv.tv_usec), (arrival / 1'000) % 1'000'000);
 }
 
 TEST(ChronyTest, NoSampleWithoutDate) {
@@ -68,7 +68,7 @@ TEST(ChronyTest, NoSampleWithoutFix) {
 
 TEST(ChronyTest, SampleEvenWhenClockFarOff) {
   // A board without RTC boots far off; chrony (makestep) decides, not us.
-  const int64_t arrival = *FixUnixNs(NoonFix()) - 400LL * 86400 * 1000000000;
+  const int64_t arrival = *FixUnixNs(NoonFix()) - 400LL * 86400 * 1'000'000'000;
   auto s = MakeChronySample(NoonFix(), arrival);
   ASSERT_TRUE(s);
   EXPECT_NEAR(s->offset, 400.0 * 86400, 1e-3);
@@ -78,7 +78,7 @@ TEST(ChronyTest, SendsToSocket) {
   const std::string path = "/tmp/lgrtk_chrony_" + std::to_string(getpid());
   const int fd = BindDgram(path);
   ChronySock sock(path);
-  auto s = MakeChronySample(NoonFix(), *FixUnixNs(NoonFix()) + 50000000);
+  auto s = MakeChronySample(NoonFix(), *FixUnixNs(NoonFix()) + 50'000'000);
   ASSERT_TRUE(s);
   sock.Send(*s);
   pollfd p{fd, POLLIN, 0};

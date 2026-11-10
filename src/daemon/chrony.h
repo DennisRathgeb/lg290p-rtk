@@ -11,6 +11,8 @@
 #include <optional>
 #include <string>
 
+#include "internal/unique_fd.h"
+#include "internal/unix_socket.h"
 #include "lgrtk/fix.h"
 
 namespace lgrtk::daemon {
@@ -36,18 +38,16 @@ struct ChronySample {
 class ChronySock {
  public:
   /// `path` is the socket chrony listens on.
-  explicit ChronySock(std::string path);
-  ~ChronySock();
-  ChronySock(const ChronySock&) = delete;
-  ChronySock& operator=(const ChronySock&) = delete;
+  explicit ChronySock(const std::string& path);
   /// Sends one sample (best effort).
   void Send(const ChronySample& s);
   /// Samples delivered.
   [[nodiscard]] uint64_t Sent() const { return sent_; }
 
  private:
-  std::string path_;
-  int fd_ = -1;
+  internal::UniqueFd fd_;
+  internal::UnixAddress addr_;
+  bool addr_ok_ = false;
   uint64_t sent_ = 0;
 };
 

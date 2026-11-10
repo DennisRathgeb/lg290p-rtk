@@ -14,17 +14,17 @@
 
 #include <cerrno>
 #include <cstring>
-#include <ctime>
+#include <memory>
 #include <utility>
+
+#include "internal/clock.h"
+#include "internal/text.h"
+#include "internal/unix_socket.h"
 
 namespace lgrtk::daemon {
 namespace {
 
-int64_t NowMs() {
-  timespec ts{};
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return static_cast<int64_t>(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
-}
+int64_t NowMs() { return internal::MonotonicNs() / internal::kNsPerMs; }
 
 std::string Errno(const std::string& what) {
   return what + ": " + std::strerror(errno);  // NOLINT(concurrency-mt-unsafe)
@@ -34,21 +34,15 @@ std::string Errno(const std::string& what) {
 
 // ---- EventLoop ----
 
-EventLoop::~EventLoop() {
-  if (wake_fd_ >= 0) {
-    close(wake_fd_);
-  }
-}
-
 bool EventLoop::Init(std::string* err) {
-  wake_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  if (wake_fd_ < 0) {
+  wake_fd_.Reset(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
+  if (!wake_fd_) {
     *err = Errno("eventfd");
     return false;
   }
-  Add(wake_fd_, POLLIN, [this](short) {
+  Add(wake_fd_.Get(), POLLIN, [this](short) {
     uint64_t v = 0;
-    while (read(wake_fd_, &v, sizeof v) == sizeof v) {
+    while (read(wake_fd_.Get(), &v, sizeof v) == sizeof v) {
     }
     DrainPosted();
   });
@@ -70,7 +64,7 @@ void EventLoop::Remove(int fd) { watches_.erase(fd); }
 
 void EventLoop::Post(std::function<void()> fn) {
   {
-    std::lock_guard<std::mutex> lock(mu_);
+    const std::scoped_lock lock(mu_);
     posted_.push_back(std::move(fn));
   }
   Wake();
@@ -87,15 +81,17 @@ void EventLoop::Quit() {
 
 void EventLoop::Wake() {
   const uint64_t one = 1;
-  if (wake_fd_ >= 0) {
-    (void)!write(wake_fd_, &one, sizeof one);
+  if (wake_fd_) {
+    // Best effort: a full counter already wakes the loop.
+    const ssize_t written = write(wake_fd_.Get(), &one, sizeof one);
+    static_cast<void>(written);
   }
 }
 
 void EventLoop::DrainPosted() {
   std::vector<std::function<void()>> todo;
   {
-    std::lock_guard<std::mutex> lock(mu_);
+    const std::scoped_lock lock(mu_);
     todo.swap(posted_);
   }
   for (auto& fn : todo) {
@@ -151,7 +147,8 @@ void EventLoop::Run() {
 
 // ---- sockets ----
 
-int ListenTcp(const std::string& host, int port, std::string* err) {
+internal::UniqueFd ListenTcp(const std::string& host, int port,
+                             std::string* err) {
   addrinfo hints{};
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
@@ -161,53 +158,50 @@ int ListenTcp(const std::string& host, int port, std::string* err) {
   if (const int rc = getaddrinfo(host.c_str(), service.c_str(), &hints, &res);
       rc != 0) {
     *err = "listen " + host + ":" + service + ": " + gai_strerror(rc);
-    return -1;
+    return {};
   }
-  const int fd = socket(res->ai_family,
-                        res->ai_socktype | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-  if (fd < 0) {
+  const std::unique_ptr<addrinfo, decltype(&freeaddrinfo)> owned(res,
+                                                                 &freeaddrinfo);
+  internal::UniqueFd fd(socket(
+      res->ai_family, res->ai_socktype | SOCK_NONBLOCK | SOCK_CLOEXEC, 0));
+  if (!fd) {
     *err = Errno("socket");
-    freeaddrinfo(res);
-    return -1;
+    return {};
   }
   const int one = 1;
-  setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
-  if (bind(fd, res->ai_addr, res->ai_addrlen) != 0 || listen(fd, 16) != 0) {
+  setsockopt(fd.Get(), SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+  if (bind(fd.Get(), res->ai_addr, res->ai_addrlen) != 0 ||
+      listen(fd.Get(), kListenBacklog) != 0) {
     *err = Errno("listen " + host + ":" + service);
-    freeaddrinfo(res);
-    close(fd);
-    return -1;
+    return {};
   }
-  freeaddrinfo(res);
   return fd;
 }
 
-int ListenUnix(const std::string& path, std::string* err) {
-  sockaddr_un a{};
-  if (path.empty() || path.size() >= sizeof a.sun_path) {
+internal::UniqueFd ListenUnix(const std::string& path, std::string* err) {
+  internal::UnixAddress a;
+  if (!internal::MakeUnixAddress(path, a)) {
     *err = "unix socket path too long or empty: " + path;
-    return -1;
+    return {};
   }
-  a.sun_family = AF_UNIX;
-  std::memcpy(a.sun_path, path.c_str(), path.size() + 1);
   struct stat st{};
   if (lstat(path.c_str(), &st) == 0) {
     if (!S_ISSOCK(st.st_mode)) {
       *err = path + " exists and is not a socket";
-      return -1;
+      return {};
     }
     unlink(path.c_str());  // stale socket of a previous run
   }
-  const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-  if (fd < 0) {
+  internal::UniqueFd fd(
+      socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0));
+  if (!fd) {
     *err = Errno("socket");
-    return -1;
+    return {};
   }
-  if (bind(fd, reinterpret_cast<sockaddr*>(&a), sizeof a) != 0 ||
-      listen(fd, 8) != 0) {
+  if (bind(fd.Get(), a.Get(), a.len) != 0 ||
+      listen(fd.Get(), kListenBacklog) != 0) {
     *err = Errno("listen " + path);
-    close(fd);
-    return -1;
+    return {};
   }
   chmod(path.c_str(), 0660);
   return fd;
@@ -230,55 +224,59 @@ int BoundPort(int fd) {
 
 // ---- ClientSet ----
 
-ClientSet::ClientSet(EventLoop* loop, Handlers handlers, size_t cap_bytes,
-                     bool read_lines, size_t max_line, size_t max_clients)
-    : loop_(loop),
-      h_(std::move(handlers)),
-      cap_(cap_bytes),
-      read_lines_(read_lines),
-      max_line_(max_line),
-      max_clients_(max_clients) {}
+ClientSet::ClientSet(EventLoop* loop, Handlers handlers, Options options)
+    : loop_(loop), h_(std::move(handlers)), opt_(options) {}
 
 ClientSet::~ClientSet() {
-  for (int fd : listeners_) {
-    loop_->Remove(fd);
-    close(fd);
+  // The descriptors close with their owners; only the watches go here.
+  for (const auto& fd : listeners_) {
+    loop_->Remove(fd.Get());
   }
-  for (auto& [id, c] : clients_) {
-    loop_->Remove(c->fd);
-    close(c->fd);
+  for (const auto& [id, c] : clients_) {
+    loop_->Remove(c->fd.Get());
   }
 }
 
-void ClientSet::AddListener(int listen_fd) {
-  listeners_.push_back(listen_fd);
-  loop_->Add(listen_fd, POLLIN,
-             [this, listen_fd](short) { Accept(listen_fd); });
+void ClientSet::AddListener(internal::UniqueFd listen_fd) {
+  const int fd = listen_fd.Get();
+  listeners_.push_back(std::move(listen_fd));
+  loop_->Add(fd, POLLIN, [this, fd](short) { Accept(fd); });
+}
+
+int ClientSet::AddTcpListener(const std::string& host, int port,
+                              std::string* err) {
+  internal::UniqueFd fd = ListenTcp(host, port, err);
+  if (!fd) {
+    return 0;
+  }
+  const int bound = BoundPort(fd.Get());
+  AddListener(std::move(fd));
+  return bound;
 }
 
 void ClientSet::Accept(int listen_fd) {
   for (;;) {
-    const int fd =
-        accept4(listen_fd, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
-    if (fd < 0) {
+    internal::UniqueFd fd(
+        accept4(listen_fd, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC));
+    if (!fd) {
       if (errno == EMFILE || errno == ENFILE || errno == ENOBUFS ||
           errno == ENOMEM) {
         // Out of descriptors: the listener stays readable, so stop watching
         // it (no busy loop) until a client leaves.
         accept_paused_ = true;
-        for (const int l : listeners_) {
-          loop_->Modify(l, 0);
+        for (const auto& l : listeners_) {
+          loop_->Modify(l.Get(), 0);
         }
       }
       return;  // EAGAIN, or a transient error: try on the next event
     }
-    if (clients_.size() >= max_clients_) {
-      close(fd);
-      continue;
+    if (clients_.size() >= opt_.max_clients) {
+      continue;  // closed as `fd` goes out of scope
     }
     const Id id = next_id_++;
-    clients_[id] = std::make_unique<Client>(Client{fd, {}, {}});
-    loop_->Add(fd, POLLIN, [this, id](short re) { OnEvents(id, re); });
+    const int raw_fd = fd.Get();
+    clients_[id] = std::make_unique<Client>(Client{std::move(fd), {}, {}});
+    loop_->Add(raw_fd, POLLIN, [this, id](short re) { OnEvents(id, re); });
     if (h_.on_open) {
       h_.on_open(id);
     }
@@ -301,12 +299,12 @@ void ClientSet::OnEvents(Id id, short revents) {
     return;
   }
   char buf[4096];
-  const ssize_t n = recv(c->fd, buf, sizeof buf, 0);
+  const ssize_t n = recv(c->fd.Get(), buf, sizeof buf, 0);
   if (n == 0 || (n < 0 && errno != EAGAIN && errno != EINTR)) {
     Close(id);
     return;
   }
-  if (n < 0 || !read_lines_) {
+  if (n < 0 || !opt_.read_lines) {
     return;
   }
   c->in.append(buf, static_cast<size_t>(n));
@@ -316,11 +314,10 @@ void ClientSet::OnEvents(Id id, short revents) {
     if (nl == std::string::npos) {
       break;
     }
-    std::string line = c->in.substr(start, nl - start);
+    // A copy: the handler may close the client and free its buffer.
+    const std::string line(internal::TrimLineEnd(
+        std::string_view(c->in).substr(start, nl - start)));
     start = nl + 1;
-    if (!line.empty() && line.back() == '\r') {
-      line.pop_back();
-    }
     if (h_.on_line) {
       h_.on_line(id, line);
     }
@@ -332,7 +329,7 @@ void ClientSet::OnEvents(Id id, short revents) {
     c = again->second.get();
   }
   c->in.erase(0, start);
-  if (c->in.size() > max_line_) {
+  if (c->in.size() > opt_.max_line) {
     Close(id);
   }
 }
@@ -343,7 +340,7 @@ void ClientSet::Send(Id id, std::string_view data) {
     return;
   }
   Client* c = it->second.get();
-  if (c->out.size() + data.size() > cap_) {
+  if (c->out.size() + data.size() > opt_.cap_bytes) {
     ++dropped_;
     Close(id);
     return;
@@ -357,7 +354,8 @@ void ClientSet::Send(Id id, std::string_view data) {
 
 void ClientSet::Flush(Id id, Client* c) {
   while (!c->out.empty()) {
-    const ssize_t n = send(c->fd, c->out.data(), c->out.size(), MSG_NOSIGNAL);
+    const ssize_t n =
+        send(c->fd.Get(), c->out.data(), c->out.size(), MSG_NOSIGNAL);
     if (n < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         break;
@@ -370,7 +368,7 @@ void ClientSet::Flush(Id id, Client* c) {
     }
     c->out.erase(0, static_cast<size_t>(n));
   }
-  loop_->Modify(c->fd, c->out.empty() ? POLLIN : POLLIN | POLLOUT);
+  loop_->Modify(c->fd.Get(), c->out.empty() ? POLLIN : POLLIN | POLLOUT);
 }
 
 void ClientSet::Close(Id id) {
@@ -378,13 +376,12 @@ void ClientSet::Close(Id id) {
   if (it == clients_.end()) {
     return;
   }
-  loop_->Remove(it->second->fd);
-  close(it->second->fd);
-  clients_.erase(it);
+  loop_->Remove(it->second->fd.Get());
+  clients_.erase(it);  // closes the descriptor
   if (accept_paused_) {
     accept_paused_ = false;
-    for (const int l : listeners_) {
-      loop_->Modify(l, POLLIN);
+    for (const auto& l : listeners_) {
+      loop_->Modify(l.Get(), POLLIN);
     }
   }
   if (h_.on_close) {

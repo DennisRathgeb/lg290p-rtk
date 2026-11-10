@@ -2,9 +2,9 @@
 // lgrtkd: serves one Quectel LG290P system-wide (gpsd JSON, raw tap, chrony,
 // control socket). Runs in the foreground; systemd supervises it.
 #include <pthread.h>
-#include <signal.h>
 #include <unistd.h>
 
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <optional>
@@ -87,10 +87,7 @@ int main(int argc, char** argv) {
 
   // Block the shutdown signals in every thread (the receiver and NTRIP
   // threads inherit this mask); the event loop reads them from a signalfd.
-  sigset_t set;
-  sigemptyset(&set);
-  sigaddset(&set, SIGTERM);
-  sigaddset(&set, SIGINT);
+  const sigset_t set = lgrtk::daemon::ShutdownSignals();
   pthread_sigmask(SIG_BLOCK, &set, nullptr);
   signal(SIGPIPE, SIG_IGN);
 

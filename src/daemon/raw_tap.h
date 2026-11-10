@@ -14,12 +14,16 @@
 
 namespace lgrtk::daemon {
 
+/// Output buffered per raw-tap client: RTCM bursts are larger than gpsd
+/// reports.
+inline constexpr size_t kRawTapBufferCap = size_t{1024} * 1024;
+
 /// Raw byte server; every method runs on the loop thread except Clients().
 class RawTap {
  public:
   /// `cap_bytes` bounds each client buffer (a client that falls behind is
   /// dropped).
-  explicit RawTap(EventLoop* loop, size_t cap_bytes = 1024 * 1024);
+  explicit RawTap(EventLoop* loop, size_t cap_bytes = kRawTapBufferCap);
   /// Listens on host:port (0 = any free port).
   bool Listen(const std::string& host, int port, std::string* err);
   /// The bound port.

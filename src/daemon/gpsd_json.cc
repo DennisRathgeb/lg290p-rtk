@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <numbers>
 
+#include "internal/clock.h"
 #include "lgrtk/version.h"
 
 namespace lgrtk::daemon {
@@ -13,8 +14,8 @@ namespace {
 using Obj = nlohmann::ordered_json;
 
 constexpr double kEp95 = 1.96;  // 1-sigma -> ~95 % for gpsd's ep* fields
-constexpr int64_t kNsPerS = 1000000000;
-constexpr int64_t kNsPerMs = 1000000;
+using internal::kNsPerMs;
+using internal::kNsPerS;
 constexpr int64_t kSPerDay = 86400;
 
 std::string Line(const Obj& o) { return o.dump() + "\r\n"; }

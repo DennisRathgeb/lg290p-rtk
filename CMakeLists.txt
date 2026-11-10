@@ -62,6 +62,12 @@ endif()
 # ---- daemon: internal core library (not installed) + lgrtkd ----
 if(LGRTK_BUILD_DAEMON)
   include(cmake/DaemonDeps.cmake)
+  # Control-socket client and protocol constants: all the CLI needs of lgrtkd.
+  add_library(lgrtkd_ctl STATIC src/daemon/control_client.cc)
+  target_include_directories(lgrtkd_ctl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_link_libraries(lgrtkd_ctl
+    PUBLIC nlohmann_json::nlohmann_json
+    PRIVATE $<BUILD_INTERFACE:lgrtk_warnings>)
   add_library(lgrtkd_core STATIC
     src/daemon/config.cc
     src/daemon/gpsd_json.cc
@@ -76,21 +82,32 @@ if(LGRTK_BUILD_DAEMON)
   )
   target_include_directories(lgrtkd_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(lgrtkd_core
-    PUBLIC lgrtk nlohmann_json::nlohmann_json
+    PUBLIC lgrtk lgrtkd_ctl nlohmann_json::nlohmann_json
     PRIVATE tomlplusplus::tomlplusplus $<BUILD_INTERFACE:lgrtk_warnings>)
   add_executable(lgrtkd apps/lgrtkd/main.cc)
   target_link_libraries(lgrtkd PRIVATE lgrtkd_core lgrtk_warnings)
 endif()
 
 if(LGRTK_BUILD_APPS)
-  add_executable(lgrtk_cli apps/lgrtk/main.cc)
+  add_executable(lgrtk_cli
+    apps/lgrtk/main.cc
+    apps/lgrtk/args.cc
+    apps/lgrtk/format.cc
+    apps/lgrtk/session.cc
+    apps/lgrtk/cmd_monitor.cc
+    apps/lgrtk/cmd_config.cc
+    apps/lgrtk/cmd_ntrip.cc
+    apps/lgrtk/cmd_project.cc
+  )
   set_target_properties(lgrtk_cli PROPERTIES OUTPUT_NAME lgrtk)
+  target_include_directories(lgrtk_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(lgrtk_cli PRIVATE lgrtk lgrtk_warnings)
   if(LGRTK_HAVE_PROJ)
     target_link_libraries(lgrtk_cli PRIVATE lgrtk::projection)
   endif()
   if(LGRTK_BUILD_DAEMON)
-    target_link_libraries(lgrtk_cli PRIVATE lgrtkd_core)
+    target_sources(lgrtk_cli PRIVATE apps/lgrtk/cmd_ctl.cc)
+    target_link_libraries(lgrtk_cli PRIVATE lgrtkd_ctl)
     target_compile_definitions(lgrtk_cli PRIVATE LGRTK_HAVE_CTL=1)
   endif()
 endif()

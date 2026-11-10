@@ -21,7 +21,7 @@ class GpsdServer {
  public:
   /// `device` is the path clients see; `cap_bytes` bounds each client buffer.
   GpsdServer(EventLoop* loop, std::string device,
-             size_t cap_bytes = 256 * 1024);
+             size_t cap_bytes = kClientBufferCap);
   /// Listens on host:port (0 = any free port).
   bool Listen(const std::string& host, int port, std::string* err);
   /// The bound port (after Listen).

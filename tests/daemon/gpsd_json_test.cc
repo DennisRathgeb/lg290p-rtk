@@ -102,7 +102,7 @@ TEST(GpsdJsonTest, IsoTimeMillis) {
   EXPECT_EQ(IsoTime(*FixUnixNs(f)), "2026-11-10T23:59:59.999Z");
   f.date_ymd = 20240229;
   f.utc_s = 0;
-  EXPECT_EQ(*FixUnixNs(f), 1709164800LL * 1000000000LL);
+  EXPECT_EQ(*FixUnixNs(f), 1709164800LL * 1'000'000'000LL);
 }
 
 TEST(GpsdJsonTest, EpFromSigmas) {

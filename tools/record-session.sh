@@ -11,6 +11,8 @@
 #   LGRTK_DATA                 output root (default ~/.local/share/lgrtk/recordings)
 #   LGRTK_BIN                  directory with lgrtkd and lgrtk (default build/dev)
 #   LGRTK_NTRIP_PASSWORD_FILE  NTRIP password, one line (required with HOST)
+#   LGRTK_GPSD_PORT            gpsd port on 127.0.0.1 (default 2947)
+#   LGRTK_RAW_PORT             raw tap port on 127.0.0.1 (default 5018)
 #
 # Writes $LGRTK_DATA/<date>-<NAME>/:
 #   raw.bin        every byte the receiver sent (NMEA + RTCM), replayable
@@ -30,6 +32,22 @@ if [ -n "$HOST" ] && { [ -z "$MOUNT" ] || [ -z "$USER_" ]; }; then
   echo "$USAGE" >&2
   exit 2
 fi
+GPSD_PORT=${LGRTK_GPSD_PORT:-2947}
+RAW_PORT=${LGRTK_RAW_PORT:-5018}
+# True when nothing listens on 127.0.0.1:$1 (so lgrtkd can bind it).
+port_free() {
+  python3 -I -c 'import socket, sys
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(sys.argv[1])))' "$1" 2>/dev/null
+}
+for p in "$GPSD_PORT:LGRTK_GPSD_PORT" "$RAW_PORT:LGRTK_RAW_PORT"; do
+  if ! port_free "${p%%:*}"; then
+    echo "port ${p%%:*} on 127.0.0.1 is in use (gpsd or another lgrtkd?);" \
+      "stop it or set ${p#*:} to a free port" >&2
+    exit 2
+  fi
+done
 OUT=${LGRTK_DATA:-$HOME/.local/share/lgrtk/recordings}/$(date +%F)-$NAME
 mkdir -p "$OUT"
 # Stable path of the Waveshare board (CH343) whatever ttyACM number it gets.
@@ -41,6 +59,26 @@ if [ -z "$PORT" ]; then
   done
 fi
 echo "receiver: $PORT -> $(readlink -f "$PORT")"
+DAEMON=
+REC=
+RUN=
+# Runs on every exit, also after an error: no lgrtkd or recorder is left behind.
+cleanup() {
+  if [ -n "$REC" ]; then
+    kill "$REC" 2>/dev/null || true
+    REC=
+  fi
+  if [ -n "$DAEMON" ]; then
+    kill -TERM "$DAEMON" 2>/dev/null || true
+    wait "$DAEMON" 2>/dev/null || true
+    DAEMON=
+  fi
+  if [ -n "$RUN" ]; then
+    rm -rf "$RUN"
+    RUN=
+  fi
+}
+trap cleanup EXIT
 RUN=$(mktemp -d)
 SOCK=$RUN/control.sock
 
@@ -49,9 +87,9 @@ cat >"$OUT/lgrtkd.toml" <<EOF
 port = "$PORT"
 apply_config = false
 [gpsd]
-listen = "127.0.0.1:2947"
+listen = "127.0.0.1:$GPSD_PORT"
 [raw]
-listen = "127.0.0.1:5018"
+listen = "127.0.0.1:$RAW_PORT"
 [control]
 sock = "$SOCK"
 EOF
@@ -74,16 +112,16 @@ sleep 2
 kill -0 "$DAEMON" 2>/dev/null || { cat "$OUT/lgrtkd.log"; exit 1; }
 
 # Raw tap and gpsd JSON, each to its own file.
-python3 -I - "$OUT" <<'PY' &
+python3 -I - "$OUT" "$GPSD_PORT" "$RAW_PORT" <<'PY' &
 import json, socket, sys, threading, time
-out = sys.argv[1]
+out, gpsd_port, raw_port = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
 def raw():
-    s = socket.create_connection(("127.0.0.1", 5018))
+    s = socket.create_connection(("127.0.0.1", raw_port))
     with open(out + "/raw.bin", "ab") as f:
         while (b := s.recv(65536)):
             f.write(b); f.flush()
 def gpsd():
-    s = socket.create_connection(("127.0.0.1", 2947))
+    s = socket.create_connection(("127.0.0.1", gpsd_port))
     s.sendall(b'?WATCH={"enable":true,"json":true};\n')
     with open(out + "/gpsd.jsonl", "a") as f:
         for line in s.makefile("r"):
@@ -94,11 +132,10 @@ gpsd()
 PY
 REC=$!
 
+# Ctrl-C: stop recording, then ask for notes.
 stop() {
-  kill "$REC" 2>/dev/null || true
-  kill -TERM "$DAEMON" 2>/dev/null || true
-  wait "$DAEMON" 2>/dev/null || true
-  rm -rf "$RUN"
+  trap - INT TERM
+  cleanup
   echo
   echo "recorded to $OUT:"
   ls -la "$OUT"
