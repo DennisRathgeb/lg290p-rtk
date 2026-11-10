@@ -182,5 +182,13 @@ TEST(EpochTest, FixTypeMapping) {
   EXPECT_STREQ(ToString(FixType::kRtkFixed), "rtk-fixed");
 }
 
+TEST(EpochTest, GgaQualityRoundTrip) {
+  for (uint8_t q = 0; q <= 8; ++q) {
+    EXPECT_EQ(ToGgaQuality(FixTypeFromGgaQuality(q)), q);
+  }
+  EXPECT_EQ(ToGgaQuality(FixType::kRtkFloat), 5);
+  EXPECT_EQ(ToGgaQuality(FixTypeFromGgaQuality(9)), 0);  // unknown -> kNone
+}
+
 }  // namespace
 }  // namespace lgrtk

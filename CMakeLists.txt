@@ -20,6 +20,7 @@ add_library(lgrtk
   src/version.cc
   src/framer.cc
   src/nmea.cc
+  src/fix.cc
   src/epoch.cc
   src/lg290p.cc
   src/serial.cc

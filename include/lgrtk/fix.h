@@ -26,6 +26,9 @@ enum class FixType : uint8_t {
 [[nodiscard]] const char* ToString(FixType t) noexcept;
 /// Maps a GGA quality indicator (0..8) to a FixType; unknown values → kNone.
 [[nodiscard]] FixType FixTypeFromGgaQuality(uint8_t quality) noexcept;
+/// The GGA quality indicator (0..8) of a FixType; the inverse of
+/// FixTypeFromGgaQuality.
+[[nodiscard]] uint8_t ToGgaQuality(FixType t) noexcept;
 
 /// Which reference frame the position is in. The receiver cannot know the
 /// frame of its corrections; the application declares the CRS of each case

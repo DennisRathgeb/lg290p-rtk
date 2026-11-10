@@ -284,22 +284,11 @@ std::string BuildGga(const Fix& f) {
   AppendDegMin(body, f.lat_deg, 2, 'N', 'S');
   body += ',';
   AppendDegMin(body, f.lon_deg, 3, 'E', 'W');
-  int q = 0;
-  switch (f.type) {
-    case FixType::kSingle:
-      q = 1;
-      break;
-    case FixType::kDgnss:
-      q = 2;
-      break;
-    case FixType::kRtkFixed:
-      q = 4;
-      break;
-    case FixType::kRtkFloat:
-      q = 5;
-      break;
-    default:
-      q = f.has_position ? 1 : 0;
+  int q = ToGgaQuality(f.type);
+  // A caster only needs a usable position: the other solution kinds (PPS,
+  // dead reckoning, manual, simulation, none) are reported as autonomous.
+  if (q != 1 && q != 2 && q != 4 && q != 5) {
+    q = f.has_position ? 1 : 0;
   }
   std::snprintf(buf, sizeof buf, ",%d,%02d,%.1f,%.3f,M,%.3f,M,,", q, f.sats,
                 static_cast<double>(f.hdop), f.h_ell_m - f.geoid_sep_m,
