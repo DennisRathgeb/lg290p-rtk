@@ -2,24 +2,29 @@
 #ifndef LGRTK_RECEIVER_H_
 #define LGRTK_RECEIVER_H_
 
+// clang-format off
 /// @file receiver.h
 /// The LG290P driver: an explicit state machine on its own I/O thread.
+/// docs/architecture.md describes each state; docs/state-machine.svg draws it.
 ///
 /// @verbatim
-///  kDisconnected -> kOpening -> kIdentifying -> kConfiguring -> kStreaming <->
-///  kStale
-///        ^             | fail        | no reply at any baud        | | | v v
-///        v            v
-///        +-------- kReconnecting <---+-- port vanished / I/O
-///        error-+------------+
-///                                     kFault (a command was refused; waits for
-///                                     Stop)
+///  kDisconnected -> kOpening -> kIdentifying -> kConfiguring -> kStreaming <-> kStale
+///                    ^   |          |              |              |             |
+///                    |   | fail     | port lost    | port lost    +- port lost -+
+///                    |   v          v              v              v
+///                    +-- kReconnecting <-----------+--------------+
+///
+///  kStreaming -> kIdentifying (the receiver restarted on its own: UTC jumped back)
+///  kIdentifying (no reply at any baud), kConfiguring (a command refused)
+///      -> kFault (waits for Stop())
+///  any state -> kStopped (Stop())
 /// @endverbatim
 ///
 /// Every transition is reported through OnStatus. Fixes arrive through
 /// OnFix; LatestFix() gives the newest one to pollers, and Status() says how
 /// old it is, so a consumer never mistakes the last fix before an unplug for
 /// a live one.
+// clang-format on
 
 #include <atomic>
 #include <condition_variable>
@@ -47,7 +52,7 @@
 
 namespace lgrtk {
 
-/// Driver states (see the diagram in receiver.h).
+/// Driver states (diagram in the file description, docs/state-machine.svg).
 enum class State : uint8_t {
   kDisconnected,  ///< not started yet / port never opened
   kOpening,       ///< opening the tty
@@ -118,8 +123,8 @@ struct FixSnapshot {
 class RawRecorder {
  public:
   /// Opens (truncates) `path`.
-  static std::optional<RawRecorder> Open(const std::string& path,
-                                         std::string& err);
+  [[nodiscard]] static std::optional<RawRecorder> Open(const std::string& path,
+                                                       std::string& err);
   /// Moves the open file.
   RawRecorder(RawRecorder&& o) noexcept;
   /// Closes this file and takes over `o`'s.
@@ -148,22 +153,28 @@ class Lg290pReceiver final : public CorrectionSink {
   ~Lg290pReceiver() override;
   Lg290pReceiver(const Lg290pReceiver&) = delete;
   Lg290pReceiver& operator=(const Lg290pReceiver&) = delete;
+  Lg290pReceiver(Lg290pReceiver&&) = delete;
+  Lg290pReceiver& operator=(Lg290pReceiver&&) = delete;
 
-  void OnFix(std::function<void(const Fix&)> cb) {
-    on_fix_ = std::move(cb);
-  }  ///< every epoch
+  /// Called with every epoch.
+  void OnFix(std::function<void(const Fix&)> cb) { on_fix_ = std::move(cb); }
+  /// Called on every state transition.
   void OnStatus(std::function<void(const StatusEvent&)> cb) {
     on_status_ = std::move(cb);
-  }  ///< transitions
+  }
+  /// Called with every NMEA sentence.
   void OnNmea(std::function<void(std::string_view)> cb) {
     on_nmea_ = std::move(cb);
-  }  ///< every sentence
+  }
+  /// Called with every RTCM frame the receiver sends (raw observations, base
+  /// output).
   void OnRtcm(std::function<void(std::span<const uint8_t>)> cb) {
     on_rtcm_ = std::move(cb);
-  }  ///< RTCM out (raw obs, base)
+  }
+  /// Called with every chunk of bytes read from the port.
   void OnRaw(std::function<void(std::span<const uint8_t>)> cb) {
     on_raw_ = std::move(cb);
-  }  ///< every byte read
+  }
 
   /// Starts the I/O thread. False if already running.
   bool Start();
@@ -178,7 +189,8 @@ class Lg290pReceiver final : public CorrectionSink {
   [[nodiscard]] FixSnapshot Snapshot() const;
   /// Queues a command; the future gets the reply (nullopt on timeout or when
   /// the command expects none). Executed while streaming.
-  std::future<std::optional<nmea::OwnedReply>> Send(lg290p::Command cmd);
+  [[nodiscard]] std::future<std::optional<nmea::OwnedReply>> Send(
+      lg290p::Command cmd);
   /// Queues RTCM3 frames for the receiver (CorrectionSink).
   bool Inject(std::span<const uint8_t> rtcm_frames) override;
 
@@ -209,6 +221,13 @@ class Lg290pReceiver final : public CorrectionSink {
   void DrainInject();
   void ServeQueue();
   void FailPendingQueue();
+  /// Resolves the in-flight command (if any) with `reply` and clears it.
+  void FinishInFlight(std::optional<nmea::OwnedReply> reply);
+  /// Stores `fix` as the latest, counts it and calls OnFix. Returns the state
+  /// read together with the store.
+  State PublishFix(const Fix& fix);
+  State CurrentState() const;
+  std::string LastError() const;
   bool StopRequested() const { return stop_.load(std::memory_order_relaxed); }
 
   ReceiverOptions opt_;
@@ -247,7 +266,7 @@ class Lg290pReceiver final : public CorrectionSink {
   std::deque<Pending> queue_;
 
   // Single-producer single-consumer byte ring for corrections.
-  static constexpr size_t kRingSize = 64 * 1024;
+  static constexpr size_t kRingSize = size_t{64} * 1024;
   std::unique_ptr<uint8_t[]> ring_;
   std::atomic<size_t> ring_head_{0};  // written by the producer
   std::atomic<size_t> ring_tail_{0};  // written by the I/O thread

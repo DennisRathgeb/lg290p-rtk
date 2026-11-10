@@ -33,7 +33,7 @@ uint32_t Crc24q(std::span<const uint8_t> data) noexcept {
     crc ^= static_cast<uint32_t>(b) << 16;
     for (int i = 0; i < 8; ++i) {
       crc <<= 1;
-      if (crc & 0x1000000u) {
+      if ((crc & 0x1000000u) != 0) {
         crc ^= 0x1864CFBu;
       }
     }

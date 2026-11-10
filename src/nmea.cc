@@ -1,9 +1,7 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/nmea.h"
 
-#include <charconv>
-#include <system_error>
-
+#include "internal/text.h"
 #include "lgrtk/framer.h"
 
 namespace lgrtk::nmea {
@@ -14,35 +12,7 @@ constexpr double kKnotToMps = 1852.0 / 3600.0;
 
 using Fields = std::array<std::string_view, kMaxFields>;
 
-// Parses a decimal number; an empty field yields `empty_value`.
-bool ParseDouble(std::string_view s, double& out,
-                 double empty_value = 0.0) noexcept {
-  if (s.empty()) {
-    out = empty_value;
-    return true;
-  }
-  const auto r = std::from_chars(s.data(), s.data() + s.size(), out);
-  return r.ec == std::errc{} && r.ptr == s.data() + s.size();
-}
-
-template <class T>
-bool ParseUnsigned(std::string_view s, T& out, T empty_value = 0) noexcept {
-  if (s.empty()) {
-    out = empty_value;
-    return true;
-  }
-  const auto r = std::from_chars(s.data(), s.data() + s.size(), out);
-  return r.ec == std::errc{} && r.ptr == s.data() + s.size();
-}
-
-bool ParseInt(std::string_view s, int& out, int empty_value) noexcept {
-  if (s.empty()) {
-    out = empty_value;
-    return true;
-  }
-  const auto r = std::from_chars(s.data(), s.data() + s.size(), out);
-  return r.ec == std::errc{} && r.ptr == s.data() + s.size();
-}
+using internal::ParseField;
 
 // ddmm.mmmm (lat) or dddmm.mmmm (lon) with a hemisphere letter.
 bool ParseAngle(std::string_view field, std::string_view hemi,
@@ -56,8 +26,8 @@ bool ParseAngle(std::string_view field, std::string_view hemi,
   }
   unsigned deg = 0;
   double minutes = 0.0;
-  if (!ParseUnsigned(field.substr(0, deg_digits), deg) ||
-      !ParseDouble(field.substr(deg_digits), minutes)) {
+  if (!ParseField(field.substr(0, deg_digits), deg) ||
+      !ParseField(field.substr(deg_digits), minutes)) {
     return false;
   }
   out_deg = static_cast<double>(deg) + minutes / 60.0;
@@ -80,9 +50,8 @@ bool ParseUtc(std::string_view s, double& out_s) noexcept {
   unsigned hh = 0;
   unsigned mm = 0;
   double ss = 0.0;
-  if (!ParseUnsigned(s.substr(0, 2), hh) ||
-      !ParseUnsigned(s.substr(2, 2), mm) || !ParseDouble(s.substr(4), ss) ||
-      hh > 23 || mm > 59 || ss >= 61.0) {
+  if (!ParseField(s.substr(0, 2), hh) || !ParseField(s.substr(2, 2), mm) ||
+      !ParseField(s.substr(4), ss) || hh > 23 || mm > 59 || ss >= 61.0) {
     return false;
   }
   out_s = hh * 3600.0 + mm * 60.0 + ss;
@@ -114,9 +83,7 @@ size_t Prepare(std::string_view line, std::string_view type,
 }  // namespace
 
 std::string_view Validate(std::string_view line) noexcept {
-  while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
-    line.remove_suffix(1);
-  }
+  line = internal::TrimLineEnd(line);
   if (!NmeaChecksumOk(line)) {
     return {};
   }
@@ -186,10 +153,10 @@ std::optional<Gga> ParseGga(std::string_view line) noexcept {
   unsigned sats = 0;
   unsigned station = 0;
   if (!ParseUtc(f[1], g.utc_s) || !ParseAngle(f[2], f[3], 2, g.lat_deg) ||
-      !ParseAngle(f[4], f[5], 3, g.lon_deg) || !ParseUnsigned(f[6], quality) ||
-      !ParseUnsigned(f[7], sats) || !ParseDouble(f[8], g.hdop) ||
-      !ParseDouble(f[9], g.alt_msl_m) || !ParseDouble(f[11], g.geoid_sep_m) ||
-      !ParseDouble(f[13], g.diff_age_s) || !ParseUnsigned(f[14], station) ||
+      !ParseAngle(f[4], f[5], 3, g.lon_deg) || !ParseField(f[6], quality) ||
+      !ParseField(f[7], sats) || !ParseField(f[8], g.hdop) ||
+      !ParseField(f[9], g.alt_msl_m) || !ParseField(f[11], g.geoid_sep_m) ||
+      !ParseField(f[13], g.diff_age_s) || !ParseField(f[14], station) ||
       quality > 9 || sats > 255 || station > 0xFFFF) {
     return std::nullopt;
   }
@@ -210,8 +177,8 @@ std::optional<Rmc> ParseRmc(std::string_view line) noexcept {
   double knots = 0.0;
   if (!ParseUtc(f[1], r.utc_s) || f[2].size() > 1 ||
       !ParseAngle(f[3], f[4], 2, r.lat_deg) ||
-      !ParseAngle(f[5], f[6], 3, r.lon_deg) || !ParseDouble(f[7], knots) ||
-      !ParseDouble(f[8], r.course_deg)) {
+      !ParseAngle(f[5], f[6], 3, r.lon_deg) || !ParseField(f[7], knots) ||
+      !ParseField(f[8], r.course_deg)) {
     return std::nullopt;
   }
   r.valid = f[2] == "A";
@@ -221,9 +188,9 @@ std::optional<Rmc> ParseRmc(std::string_view line) noexcept {
     unsigned d = 0;
     unsigned m = 0;
     unsigned y = 0;
-    if (!ParseUnsigned(f[9].substr(0, 2), d) ||
-        !ParseUnsigned(f[9].substr(2, 2), m) ||
-        !ParseUnsigned(f[9].substr(4, 2), y)) {
+    if (!ParseField(f[9].substr(0, 2), d) ||
+        !ParseField(f[9].substr(2, 2), m) ||
+        !ParseField(f[9].substr(4, 2), y)) {
       return std::nullopt;
     }
     r.date_ymd = MakeDate(y < 80 ? 2000 + y : 1900 + y, m, d);
@@ -237,10 +204,10 @@ std::optional<Gst> ParseGst(std::string_view line) noexcept {
     return std::nullopt;
   }
   Gst g{};
-  if (!ParseUtc(f[1], g.utc_s) || !ParseDouble(f[2], g.rms_m) ||
-      !ParseDouble(f[3], g.major_m) || !ParseDouble(f[4], g.minor_m) ||
-      !ParseDouble(f[5], g.orient_deg) || !ParseDouble(f[6], g.sigma_lat_m) ||
-      !ParseDouble(f[7], g.sigma_lon_m) || !ParseDouble(f[8], g.sigma_alt_m)) {
+  if (!ParseUtc(f[1], g.utc_s) || !ParseField(f[2], g.rms_m) ||
+      !ParseField(f[3], g.major_m) || !ParseField(f[4], g.minor_m) ||
+      !ParseField(f[5], g.orient_deg) || !ParseField(f[6], g.sigma_lat_m) ||
+      !ParseField(f[7], g.sigma_lon_m) || !ParseField(f[8], g.sigma_alt_m)) {
     return std::nullopt;
   }
   g.valid = !f[6].empty() && !f[7].empty() && !f[8].empty();
@@ -256,9 +223,9 @@ std::optional<Gsa> ParseGsa(std::string_view line) noexcept {
   Gsa g{};
   unsigned mode = 0;
   unsigned system = 0;
-  if (!ParseUnsigned(f[2], mode) || !ParseDouble(f[15], g.pdop) ||
-      !ParseDouble(f[16], g.hdop) || !ParseDouble(f[17], g.vdop) ||
-      (n > 18 && !ParseUnsigned(f[18], system)) || mode > 3 || system > 255) {
+  if (!ParseField(f[2], mode) || !ParseField(f[15], g.pdop) ||
+      !ParseField(f[16], g.hdop) || !ParseField(f[17], g.vdop) ||
+      (n > 18 && !ParseField(f[18], system)) || mode > 3 || system > 255) {
     return std::nullopt;
   }
   g.fix_mode = static_cast<uint8_t>(mode);
@@ -283,9 +250,8 @@ std::optional<Gsv> ParseGsv(std::string_view line) noexcept {
   unsigned total = 0;
   unsigned num = 0;
   unsigned in_view = 0;
-  if (!ParseUnsigned(f[1], total) || !ParseUnsigned(f[2], num) ||
-      !ParseUnsigned(f[3], in_view) || total > 255 || num > 255 ||
-      in_view > 255) {
+  if (!ParseField(f[1], total) || !ParseField(f[2], num) ||
+      !ParseField(f[3], in_view) || total > 255 || num > 255 || in_view > 255) {
     return std::nullopt;
   }
   g.total_msgs = static_cast<uint8_t>(total);
@@ -295,7 +261,7 @@ std::optional<Gsv> ParseGsv(std::string_view line) noexcept {
   const size_t sats = std::min<size_t>(rest / 4, 4);
   if (rest % 4 == 1) {
     unsigned sig = 0;
-    if (!ParseUnsigned(f[n - 1], sig) || sig > 255) {
+    if (!ParseField(f[n - 1], sig) || sig > 255) {
       return std::nullopt;
     }
     g.signal_id = static_cast<uint8_t>(sig);
@@ -306,8 +272,8 @@ std::optional<Gsv> ParseGsv(std::string_view line) noexcept {
     int az = 0;
     int cn0 = 0;
     const size_t b = 4 + 4 * i;
-    if (!ParseUnsigned(f[b], prn) || !ParseInt(f[b + 1], elev, -1) ||
-        !ParseInt(f[b + 2], az, -1) || !ParseInt(f[b + 3], cn0, -1) ||
+    if (!ParseField(f[b], prn) || !ParseField(f[b + 1], elev, -1) ||
+        !ParseField(f[b + 2], az, -1) || !ParseField(f[b + 3], cn0, -1) ||
         prn > 0xFFFF) {
       return std::nullopt;
     }
@@ -325,7 +291,7 @@ std::optional<Vtg> ParseVtg(std::string_view line) noexcept {
   }
   Vtg v{};
   double kmh = 0.0;
-  if (!ParseDouble(f[1], v.course_deg) || !ParseDouble(f[7], kmh)) {
+  if (!ParseField(f[1], v.course_deg) || !ParseField(f[7], kmh)) {
     return std::nullopt;
   }
   v.speed_mps = kmh / 3.6;
@@ -341,8 +307,8 @@ std::optional<Zda> ParseZda(std::string_view line) noexcept {
   unsigned d = 0;
   unsigned m = 0;
   unsigned y = 0;
-  if (!ParseUtc(f[1], z.utc_s) || !ParseUnsigned(f[2], d) ||
-      !ParseUnsigned(f[3], m) || !ParseUnsigned(f[4], y)) {
+  if (!ParseUtc(f[1], z.utc_s) || !ParseField(f[2], d) ||
+      !ParseField(f[3], m) || !ParseField(f[4], y)) {
     return std::nullopt;
   }
   z.date_ymd = MakeDate(y, m, d);
@@ -355,9 +321,9 @@ std::optional<Epe> ParseEpe(std::string_view line) noexcept {
     return std::nullopt;
   }
   Epe e{};
-  if (!ParseDouble(f[2], e.north_m) || !ParseDouble(f[3], e.east_m) ||
-      !ParseDouble(f[4], e.down_m) || !ParseDouble(f[5], e.h2d_m) ||
-      !ParseDouble(f[6], e.h3d_m)) {
+  if (!ParseField(f[2], e.north_m) || !ParseField(f[3], e.east_m) ||
+      !ParseField(f[4], e.down_m) || !ParseField(f[5], e.h2d_m) ||
+      !ParseField(f[6], e.h3d_m)) {
     return std::nullopt;
   }
   return e;
@@ -378,11 +344,11 @@ std::optional<SvinStatus> ParseSvinStatus(std::string_view line) noexcept {
   }
   SvinStatus s{};
   unsigned valid = 0;
-  if (!ParseUnsigned(f[2], s.tow_ms) || !ParseUnsigned(f[3], valid) ||
-      !ParseUnsigned(f[6], s.observations) ||
-      !ParseUnsigned(f[7], s.configured_duration) ||
-      !ParseDouble(f[8], s.mean_x_m) || !ParseDouble(f[9], s.mean_y_m) ||
-      !ParseDouble(f[10], s.mean_z_m) || !ParseDouble(f[11], s.mean_acc_m) ||
+  if (!ParseField(f[2], s.tow_ms) || !ParseField(f[3], valid) ||
+      !ParseField(f[6], s.observations) ||
+      !ParseField(f[7], s.configured_duration) ||
+      !ParseField(f[8], s.mean_x_m) || !ParseField(f[9], s.mean_y_m) ||
+      !ParseField(f[10], s.mean_z_m) || !ParseField(f[11], s.mean_acc_m) ||
       valid > 2) {
     return std::nullopt;
   }
@@ -409,7 +375,7 @@ std::optional<Reply> ParseReply(std::string_view line,
   }
   if (n >= 2 && fields[1] == "ERROR") {
     int code = 0;
-    if (n >= 3 && !ParseInt(fields[2], code, 0)) {
+    if (n >= 3 && !ParseField(fields[2], code, 0)) {
       return std::nullopt;
     }
     r.ok = false;

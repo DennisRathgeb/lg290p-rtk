@@ -2,7 +2,7 @@
 
 Everything here was checked against the Quectel *LG290P(03) & LGx80P(03) GNSS Protocol
 Specification v1.1* (2025-07-25), the Waveshare wiki and demo code, SparkFun's documentation and
-library, or our own bench (marked **bench**, with date and firmware). Claims from forums are
+library, or measured on the reference board (marked **bench**, with date and firmware). Claims from forums are
 marked *reported*.
 
 ## The receiver
@@ -36,7 +36,7 @@ and [wiki](https://www.waveshare.com/wiki/LG290P_GNSS_RTK_Module).*
   3.3 V logic; I²C is reserved by Quectel and not supported.
 - LEDs: red = 3.3 V power, green = RTK status (`RTK_STAT`), yellow = 1PPS. Key1 resets the
   receiver.
-- Firmware on our board: `LG290P03AANR01A06S`, built 2025/09/18 (**bench**).
+- Firmware on the reference board: `LG290P03AANR01A06S`, built 2025/09/18 (**bench**).
 
 ### Pinout (from the Waveshare schematic)
 
@@ -77,7 +77,7 @@ that as "date unknown".
 
 ### Outdoors, autonomous (bench, 2026-11-10, firmware A06S, Q39 antenna, walking)
 
-145 s recorded with `tools/record-session.sh` (no corrections yet; receiver warm, fix from the
+145 s recorded with `tools/record-session.sh`, without corrections (receiver warm, fix from the
 first epoch):
 
 - 10.0 Hz, 0 bad checksums, no reconnects; GGA with 8 decimals and GST/EPE after
@@ -91,7 +91,7 @@ first epoch):
 ### The stale-bytes quirk (bench, 2026-11-10)
 
 When the port is opened, the CH343 can deliver bytes from the **previous** session that were
-left in its FIFO: on our bench an epoch from an hour earlier, its tail spliced into a fresh
+left in its FIFO, e.g. an epoch from an hour earlier, its tail spliced into a fresh
 sentence. `tcflush` does not reach them. `lgrtk` discards everything read in the first 150 ms
 after every open; any other software reading this board should do the same.
 

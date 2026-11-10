@@ -1,1 +1,14 @@
 BasedOnStyle: Google
+# Include blocks: C/POSIX headers, C++ standard library, third-party libraries, this project.
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<(gtest|gmock|nlohmann|toml\+\+|proj)[/.]'
+    Priority: 3
+  - Regex: '^<ext/.*\.h>'
+    Priority: 2
+  - Regex: '^<.*\.h>'
+    Priority: 1
+  - Regex: '^<.*'
+    Priority: 2
+  - Regex: '.*'
+    Priority: 4

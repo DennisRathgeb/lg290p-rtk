@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+
 #include <nlohmann/json.hpp>
 
 #include "daemon/gpsd_json.h"
@@ -139,12 +140,13 @@ std::vector<SkySat> SkyTracker::Satellites() const {
     for (const auto& s : sats) {
       const int gnss = GnssOfSat(key.first, s.prn);
       auto [it, inserted] = merged.try_emplace(
-          {gnss, s.prn}, SkySat{s.prn, s.el, s.az, s.ss, false, gnss});
+          {gnss, s.prn}, SkySat{s.prn, s.elevation_deg, s.azimuth_deg,
+                                s.cn0_dbhz, false, gnss});
       if (!inserted) {
-        it->second.ss = std::max(it->second.ss, s.ss);
-        if (it->second.el < 0) {
-          it->second.el = s.el;
-          it->second.az = s.az;
+        it->second.cn0_dbhz = std::max(it->second.cn0_dbhz, s.cn0_dbhz);
+        if (it->second.elevation_deg < 0) {
+          it->second.elevation_deg = s.elevation_deg;
+          it->second.azimuth_deg = s.azimuth_deg;
         }
       }
     }
@@ -179,12 +181,12 @@ std::string SkyJson(const SkyTracker& sky, const std::string& device,
     j["PRN"] = s.prn;
     j["gnssid"] = s.gnssid;
     j["svid"] = s.prn;
-    if (s.el >= 0) {
-      j["el"] = s.el;
-      j["az"] = s.az;
+    if (s.elevation_deg >= 0) {
+      j["el"] = s.elevation_deg;
+      j["az"] = s.azimuth_deg;
     }
-    if (s.ss >= 0) {
-      j["ss"] = s.ss;
+    if (s.cn0_dbhz >= 0) {
+      j["ss"] = s.cn0_dbhz;
     }
     j["used"] = s.used;
     used += s.used ? 1 : 0;

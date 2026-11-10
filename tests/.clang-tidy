@@ -1,0 +1,4 @@
+# gtest's ASSERT_TRUE(opt) guards the following lines, which the optional
+# access check cannot see.
+InheritParentConfig: true
+Checks: '-bugprone-unchecked-optional-access'

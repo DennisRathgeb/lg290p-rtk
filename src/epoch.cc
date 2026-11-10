@@ -8,53 +8,6 @@
 
 namespace lgrtk {
 
-const char* ToString(FixType t) noexcept {
-  switch (t) {
-    case FixType::kNone:
-      return "none";
-    case FixType::kSingle:
-      return "single";
-    case FixType::kDgnss:
-      return "dgnss";
-    case FixType::kPps:
-      return "pps";
-    case FixType::kRtkFixed:
-      return "rtk-fixed";
-    case FixType::kRtkFloat:
-      return "rtk-float";
-    case FixType::kDeadReckoning:
-      return "dead-reckoning";
-    case FixType::kManual:
-      return "manual";
-    case FixType::kSimulation:
-      return "simulation";
-  }
-  return "?";
-}
-
-FixType FixTypeFromGgaQuality(uint8_t quality) noexcept {
-  switch (quality) {
-    case 1:
-      return FixType::kSingle;
-    case 2:
-      return FixType::kDgnss;
-    case 3:
-      return FixType::kPps;
-    case 4:
-      return FixType::kRtkFixed;
-    case 5:
-      return FixType::kRtkFloat;
-    case 6:
-      return FixType::kDeadReckoning;
-    case 7:
-      return FixType::kManual;
-    case 8:
-      return FixType::kSimulation;
-    default:
-      return FixType::kNone;
-  }
-}
-
 void EpochAssembler::StartEpoch(double utc_s) noexcept {
   pending_ = Fix{};
   pending_utc_ = utc_s;
@@ -91,31 +44,36 @@ bool EpochAssembler::Feed(std::string_view line, int64_t t_arrival_ns,
   std::optional<nmea::Epe> epe;
   std::optional<nmea::Zda> zda;
   if (type == "GGA") {
-    if (!(gga = nmea::ParseGga(body))) {
+    gga = nmea::ParseGga(body);
+    if (!gga) {
       return false;
     }
     bit = kGga;
     utc = gga->utc_s;
   } else if (type == "RMC") {
-    if (!(rmc = nmea::ParseRmc(body))) {
+    rmc = nmea::ParseRmc(body);
+    if (!rmc) {
       return false;
     }
     bit = kRmc;
     utc = rmc->utc_s;
   } else if (type == "GST") {
-    if (!(gst = nmea::ParseGst(body))) {
+    gst = nmea::ParseGst(body);
+    if (!gst) {
       return false;
     }
     bit = kGst;
     utc = gst->utc_s;
   } else if (type == "ZDA") {
-    if (!(zda = nmea::ParseZda(body))) {
+    zda = nmea::ParseZda(body);
+    if (!zda) {
       return false;
     }
     bit = kZda;
     utc = zda->utc_s;
   } else if (type == "PQTMEPE") {
-    if (!(epe = nmea::ParseEpe(body)) || !open_) {
+    epe = nmea::ParseEpe(body);
+    if (!epe || !open_) {
       return false;
     }
     bit = kEpe;
@@ -131,7 +89,7 @@ bool EpochAssembler::Feed(std::string_view line, int64_t t_arrival_ns,
   bool closed = false;
   if (bit != kEpe) {
     if (open_ && utc != pending_utc_) {
-      if (!emitted_ && (seen_ & kGga)) {
+      if (!emitted_ && ((seen_ & kGga) != 0)) {
         closed = Emit(out);
       }
       expected_ = seen_;
@@ -200,7 +158,7 @@ bool EpochAssembler::Feed(std::string_view line, int64_t t_arrival_ns,
   if (closed) {
     return true;
   }
-  if (!emitted_ && expected_ != 0 && (seen_ & kGga) &&
+  if (!emitted_ && expected_ != 0 && ((seen_ & kGga) != 0) &&
       (seen_ & expected_) == expected_) {
     return Emit(out);
   }
@@ -208,7 +166,7 @@ bool EpochAssembler::Feed(std::string_view line, int64_t t_arrival_ns,
 }
 
 bool EpochAssembler::Flush(Fix& out) noexcept {
-  const bool had = open_ && !emitted_ && (seen_ & kGga);
+  const bool had = open_ && !emitted_ && ((seen_ & kGga) != 0);
   if (had) {
     Emit(out);
   }

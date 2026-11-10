@@ -7,11 +7,12 @@
 #define LGRTK_SRC_DAEMON_GPSD_JSON_H_
 
 #include <cstdint>
-#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 #include "lgrtk/fix.h"
 

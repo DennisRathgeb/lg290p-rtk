@@ -1,16 +1,21 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/projection.h"
 
-#include <proj.h>
-
 #include <cmath>
 #include <string>
+
+#include <proj.h>
 
 namespace lgrtk {
 
 struct Projection::Impl {
   PJ_CONTEXT* ctx = nullptr;
   PJ* pj = nullptr;
+  Impl() = default;
+  Impl(const Impl&) = delete;
+  Impl& operator=(const Impl&) = delete;
+  Impl(Impl&&) = delete;
+  Impl& operator=(Impl&&) = delete;
   ~Impl() {
     if (pj != nullptr) {
       proj_destroy(pj);
@@ -55,8 +60,8 @@ std::string MissingGrids(PJ_CONTEXT* ctx, PJ* src, PJ* dst) {
       int available = 0;
       if (proj_coordoperation_get_grid_used(ctx, op, i, &short_name, nullptr,
                                             nullptr, nullptr, nullptr, nullptr,
-                                            &available) &&
-          !available && short_name != nullptr) {
+                                            &available) != 0 &&
+          available == 0 && short_name != nullptr) {
         missing += (missing.empty() ? "" : ", ") + std::string(short_name);
       }
     }
@@ -124,7 +129,8 @@ std::optional<Projection> Projection::Create(std::string_view from_crs,
           " (projsync --file <name>, or install proj-data)";
     return std::nullopt;
   }
-  if (proj_coordoperation_has_ballpark_transformation(impl->ctx, impl->pj)) {
+  if (proj_coordoperation_has_ballpark_transformation(impl->ctx, impl->pj) !=
+      0) {
     err = from + " -> " + to +
           " has only a ballpark transformation (metre-level error)";
     return std::nullopt;

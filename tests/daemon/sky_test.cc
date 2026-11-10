@@ -1,10 +1,10 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "daemon/sky.h"
 
-#include <gtest/gtest.h>
-
-#include <nlohmann/json.hpp>
 #include <string>
+
+#include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 
 #include "test_util.h"
 
@@ -37,15 +37,15 @@ TEST(SkyTest, GroupCompletesOnLastMessage) {
       "GPGSV,2,1,05,10,70,300,40,12,40,082,31,23,58,153,35,25,46,137,33,1"));
   auto sats = s.Satellites();
   ASSERT_EQ(sats.size(), 5U);
-  EXPECT_EQ(Find(sats, 0, 10)->el, 77);
+  EXPECT_EQ(Find(sats, 0, 10)->elevation_deg, 77);
   s.FeedNmea(Nmea("GPGSV,2,2,05,32,10,020,,1"));
-  EXPECT_EQ(Find(s.Satellites(), 0, 10)->el, 70);
+  EXPECT_EQ(Find(s.Satellites(), 0, 10)->elevation_deg, 70);
 }
 
 TEST(SkyTest, UntrackedHasNoSignal) {
   SkyTracker s;
   FeedGpsGroup(&s);
-  EXPECT_EQ(Find(s.Satellites(), 0, 32)->ss, -1);
+  EXPECT_EQ(Find(s.Satellites(), 0, 32)->cn0_dbhz, -1);
 }
 
 TEST(SkyTest, UsedFromGsa) {
@@ -79,7 +79,7 @@ TEST(SkyTest, SignalsOfOneSatelliteMerge) {
   auto sats = s.Satellites();
   ASSERT_EQ(sats.size(), 1U);
   EXPECT_EQ(sats[0].gnssid, 2);
-  EXPECT_EQ(sats[0].ss, 42);  // strongest signal
+  EXPECT_EQ(sats[0].cn0_dbhz, 42);  // strongest signal
 }
 
 TEST(SkyTest, BadChecksumIgnored) {
@@ -92,7 +92,7 @@ TEST(SkyTest, SkyJsonCounts) {
   SkyTracker s;
   FeedGpsGroup(&s);
   s.FeedNmea(Nmea("GNGSA,A,3,10,12,,,,,,,,,,,2.38,1.26,2.01,1"));
-  std::string line = SkyJson(s, "/dev/x", 1789084800000000000LL);
+  std::string line = SkyJson(s, "/dev/x", 1'789'084'800'000'000'000LL);
   ASSERT_EQ(line.substr(line.size() - 2), "\r\n");
   auto j = nlohmann::json::parse(line.substr(0, line.size() - 2));
   EXPECT_EQ(j["class"], "SKY");

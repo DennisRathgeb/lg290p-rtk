@@ -11,6 +11,8 @@
 #define TOML_EXCEPTIONS 0  // NOLINT(cppcoreguidelines-macro-usage)
 #include <toml++/toml.hpp>
 
+#include "internal/host_port.h"
+
 namespace lgrtk::daemon {
 namespace {
 
@@ -126,21 +128,6 @@ void CheckListen(Reader* r, const char* name, const std::string& value) {
   }
 }
 
-std::optional<std::string> ReadFirstLine(const std::string& path,
-                                         std::string* err) {
-  std::ifstream in(path);
-  if (!in) {
-    *err = "cannot read " + path;
-    return std::nullopt;
-  }
-  std::string line;
-  std::getline(in, line);
-  while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
-    line.pop_back();
-  }
-  return line;
-}
-
 }  // namespace
 
 std::optional<DaemonConfig> ParseConfig(std::string_view text,
@@ -167,7 +154,7 @@ std::optional<DaemonConfig> ParseConfig(std::string_view text,
   });
   DaemonConfig c;
   r.Get("receiver", "port", &c.receiver.port);
-  r.Get("receiver", "baud", &c.receiver.baud, 4800, 3000000);
+  r.Get("receiver", "baud", &c.receiver.baud, 4800, 3'000'000);
   r.Get("receiver", "apply_config", &c.receiver.apply_config);
   r.Get("gpsd", "listen", &c.gpsd_listen);
   r.Get("gpsd", "device_name", &c.device_name);
@@ -176,7 +163,7 @@ std::optional<DaemonConfig> ParseConfig(std::string_view text,
   r.Get("control", "sock", &c.control_sock);
   r.Get("ntrip", "enabled", &c.ntrip.enabled);
   r.Get("ntrip", "host", &c.ntrip.host);
-  r.Get("ntrip", "port", &c.ntrip.port, 1, 65535);
+  r.Get("ntrip", "port", &c.ntrip.port, 1, internal::kMaxPort);
   r.Get("ntrip", "mountpoint", &c.ntrip.mountpoint);
   r.Get("ntrip", "user", &c.ntrip.user);
   r.Get("ntrip", "password_file", &c.ntrip.password_file);
@@ -224,53 +211,17 @@ std::optional<DaemonConfig> LoadConfig(const std::string& path,
 std::optional<std::string> ReadNtripPassword(const NtripSection& ntrip,
                                              std::string* err) {
   if (!ntrip.password_file.empty()) {
-    return ReadFirstLine(ntrip.password_file, err);
+    return internal::ReadFirstLine(ntrip.password_file, err);
   }
   const char* dir =
       std::getenv("CREDENTIALS_DIRECTORY");  // NOLINT(concurrency-mt-unsafe)
   if (dir != nullptr) {
     const std::string path = std::string(dir) + "/ntrip-password";
     if (std::ifstream(path)) {
-      return ReadFirstLine(path, err);
+      return internal::ReadFirstLine(path, err);
     }
   }
   return std::string();
-}
-
-bool ParseHostPort(std::string_view s, std::string* host, int* port) {
-  std::string_view h;
-  std::string_view p;
-  if (!s.empty() && s.front() == '[') {
-    const auto close = s.find("]:");
-    if (close == std::string_view::npos) {
-      return false;
-    }
-    h = s.substr(1, close - 1);
-    p = s.substr(close + 2);
-  } else {
-    const auto colon = s.rfind(':');
-    if (colon == std::string_view::npos) {
-      return false;
-    }
-    h = s.substr(0, colon);
-    p = s.substr(colon + 1);
-  }
-  if (h.empty() || p.empty() || p.size() > 5) {
-    return false;
-  }
-  int v = 0;
-  for (char ch : p) {
-    if (ch < '0' || ch > '9') {
-      return false;
-    }
-    v = v * 10 + (ch - '0');
-  }
-  if (v < 1 || v > 65535) {
-    return false;
-  }
-  *host = std::string(h);
-  *port = v;
-  return true;
 }
 
 }  // namespace lgrtk::daemon

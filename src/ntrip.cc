@@ -1,22 +1,19 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/ntrip.h"
 
-#include <netdb.h>
 #include <poll.h>
 #include <sys/socket.h>
-#include <time.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <array>
-#include <cctype>
-#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
-#include <cstring>
 #include <utility>
 
+#include "internal/clock.h"
+#include "internal/net.h"
+#include "internal/text.h"
 #include "lgrtk/framer.h"
 #include "lgrtk/version.h"
 
@@ -24,184 +21,131 @@ namespace lgrtk {
 
 namespace {
 
-int64_t NowNs() noexcept {
-  timespec ts{};
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return int64_t{ts.tv_sec} * 1'000'000'000 + ts.tv_nsec;
-}
+using internal::MonotonicNs;
+using internal::MsToNs;
 
-class Socket {
- public:
-  Socket() = default;
-  explicit Socket(int fd) : fd_(fd) {}
-  Socket(Socket&& o) noexcept : fd_(std::exchange(o.fd_, -1)) {}
-  Socket& operator=(Socket&& o) noexcept {
-    if (this != &o) {
-      Close();
-      fd_ = std::exchange(o.fd_, -1);
-    }
-    return *this;
-  }
-  ~Socket() { Close(); }
-  void Close() {
-    if (fd_ >= 0) {
-      ::close(fd_);
-    }
-    fd_ = -1;
-  }
-  [[nodiscard]] int Fd() const { return fd_; }
-  [[nodiscard]] bool Ok() const { return fd_ >= 0; }
-
- private:
-  int fd_ = -1;
-};
-
-Socket Connect(const std::string& host, int port, int timeout_ms,
-               std::string& err, const std::atomic<bool>* stop = nullptr) {
-  addrinfo hints{};
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_STREAM;
-  addrinfo* res = nullptr;
-  const std::string service = std::to_string(port);
-  const int rc = ::getaddrinfo(host.c_str(), service.c_str(), &hints, &res);
-  if (rc != 0) {
-    err = "cannot resolve " + host + ": " + gai_strerror(rc);
-    return {};
-  }
-  Socket out;
-  for (addrinfo* a = res; a != nullptr && !out.Ok(); a = a->ai_next) {
-    Socket s(::socket(a->ai_family,
-                      a->ai_socktype | SOCK_NONBLOCK | SOCK_CLOEXEC,
-                      a->ai_protocol));
-    if (!s.Ok()) {
-      continue;
-    }
-    if (::connect(s.Fd(), a->ai_addr, a->ai_addrlen) != 0 &&
-        errno != EINPROGRESS) {
-      err = host + ":" + service + ": " + std::strerror(errno);
-      continue;
-    }
-    // Wait in short slices so Stop() is not held up by an unreachable caster.
-    pollfd p{s.Fd(), POLLOUT, 0};
-    int waited = 0;
-    int ready = 0;
-    bool stopped = false;
-    while (waited < timeout_ms && ready == 0) {
-      if (stop != nullptr && stop->load()) {
-        stopped = true;
-        break;
-      }
-      ready = ::poll(&p, 1, 50);
-      waited += 50;
-    }
-    if (ready <= 0) {
-      err = stopped ? "stopped" : host + ":" + service + ": connect timeout";
-      if (stopped) {
-        break;
-      }
-      continue;
-    }
-    int soerr = 0;
-    socklen_t len = sizeof soerr;
-    ::getsockopt(s.Fd(), SOL_SOCKET, SO_ERROR, &soerr, &len);
-    if (soerr != 0) {
-      err = host + ":" + service + ": " + std::strerror(soerr);
-      continue;
-    }
-    out = std::move(s);
-  }
-  ::freeaddrinfo(res);
-  return out;
-}
-
-bool SendAll(int fd, std::string_view s) {
-  size_t done = 0;
-  const int64_t deadline = NowNs() + 2'000'000'000;
-  while (done < s.size()) {
-    const ssize_t n =
-        ::send(fd, s.data() + done, s.size() - done, MSG_NOSIGNAL);
-    if (n > 0) {
-      done += static_cast<size_t>(n);
-      continue;
-    }
-    if (n < 0 && (errno == EAGAIN || errno == EINTR)) {
-      if (NowNs() > deadline) {
-        return false;
-      }
-      pollfd p{fd, POLLOUT, 0};
-      ::poll(&p, 1, 50);
-      continue;
-    }
-    return false;
-  }
-  return true;
-}
-
-std::string Lower(std::string s) {
-  for (char& c : s) {
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  }
-  return s;
-}
-
-/// HTTP/1.1 chunked transfer decoding, incremental.
-class Dechunker {
- public:
-  template <class F>
-  bool Feed(std::string_view in, F&& out) {
-    for (size_t i = 0; i < in.size();) {
-      switch (state_) {
-        case kSize: {
-          const char c = in[i++];
-          if (c == '\n') {
-            size_t n = 0;
-            if (std::sscanf(line_.c_str(), "%zx", &n) != 1) {
-              return false;
-            }
-            line_.clear();
-            if (n == 0) {
-              state_ = kDone;
-            } else {
-              remaining_ = n;
-              state_ = kData;
-            }
-          } else if (c != '\r') {
-            if (line_.size() > 32) {
-              return false;
-            }
-            line_ += c;
-          }
-          break;
-        }
-        case kData: {
-          const size_t take = std::min(remaining_, in.size() - i);
-          out(in.substr(i, take));
-          i += take;
-          remaining_ -= take;
-          if (remaining_ == 0) {
-            state_ = kCrlf;
-          }
-          break;
-        }
-        case kCrlf:
-          if (in[i++] == '\n') {
-            state_ = kSize;
-          }
-          break;
-        case kDone:
-          return true;
-      }
-    }
-    return true;
-  }
-
- private:
-  enum State { kSize, kData, kCrlf, kDone } state_ = kSize;
-  std::string line_;
-  size_t remaining_ = 0;
-};
+// Receive buffer for the caster connection.
+constexpr size_t kRecvBufferSize = 4096;
+// FetchSourcetable: TCP connect, then the whole table.
+constexpr int kSourcetableConnectTimeoutMs = 5000;
+constexpr int kSourcetableReadTimeoutMs = 10000;
+// Sleep of the client thread while it waits (backoff, no position, 401).
+constexpr int kIdleWaitMs = 20;
+// How much of a malformed response goes into an error message.
+constexpr size_t kResponseExcerpt = 40;
+// NTRIP 1 casters answer a mountpoint request with this line alone.
+constexpr std::string_view kIcyOk = "ICY 200 OK\r\n";
+constexpr std::string_view kHeaderEnd = "\r\n\r\n";
+constexpr int kHttpOk = 200;
+constexpr int kHttpUnauthorized = 401;
 
 std::string UserAgent() { return std::string("NTRIP lgrtk/") + kVersion; }
+
+// One NTRIP request (a mountpoint or the sourcetable).
+struct HttpRequest {
+  std::string_view host;
+  int port;
+  int version;            // NTRIP 1 or 2
+  std::string path;       // "/MOUNT", or "/" for the sourcetable
+  std::string_view gga;   // "$GPGGA...\r\n" for NTRIP 2's header; may be empty
+  std::string_view user;  // empty: no Authorization header
+  std::string_view password;
+  bool close_connection = false;  // ask the server to close after the reply
+};
+
+// The request text. NTRIP 1 is plain HTTP/1.0; NTRIP 2 adds Host,
+// Ntrip-Version, the optional Ntrip-GGA header and Connection: close (also
+// sent with NTRIP 1 when `close_connection` is set).
+std::string BuildRequest(const HttpRequest& r) {
+  std::string req =
+      "GET " + r.path + (r.version == 1 ? " HTTP/1.0\r\n" : " HTTP/1.1\r\n");
+  req += "User-Agent: " + UserAgent() + "\r\n";
+  if (r.version != 1) {
+    req += "Host: ";
+    req += r.host;
+    req += ":" + std::to_string(r.port) + "\r\n";
+    req += "Ntrip-Version: Ntrip/2.0\r\n";
+    if (!r.gga.empty()) {
+      req += "Ntrip-GGA: ";
+      req += internal::TrimLineEnd(r.gga);
+      req += "\r\n";
+    }
+  }
+  if (r.version != 1 || r.close_connection) {
+    req += "Connection: close\r\n";
+  }
+  if (!r.user.empty()) {
+    std::string credentials(r.user);
+    credentials += ':';
+    credentials += r.password;
+    req += "Authorization: Basic " + Base64(credentials) + "\r\n";
+  }
+  req += "\r\n";
+  return req;
+}
+
+// The caster's answer up to the end of its header.
+struct HttpResponse {
+  bool icy = false;         // NTRIP 1 "ICY 200 OK" (no header fields)
+  std::string status_line;  // first line without CRLF
+  int status = 0;           // HTTP status; 0 for ICY or an unparsable line
+  bool chunked = false;     // Transfer-Encoding: chunked
+  std::string body;         // bytes received after the header
+};
+
+// Reads until the response header is complete. nullopt with a reason in
+// `err` on timeout, a closed connection or a stop request.
+std::optional<HttpResponse> ReadResponseHeader(int fd, int64_t deadline_ns,
+                                               const std::string& host,
+                                               const std::atomic<bool>* stop,
+                                               std::string& err) {
+  std::string head;
+  std::array<char, kRecvBufferSize> buf{};
+  HttpResponse r;
+  size_t header_end = std::string::npos;
+  while (stop == nullptr || !stop->load(std::memory_order_relaxed)) {
+    if (head.starts_with(kIcyOk)) {
+      r.icy = true;
+      header_end = kIcyOk.size();
+      break;
+    }
+    header_end = head.find(kHeaderEnd);
+    if (header_end != std::string::npos) {
+      header_end += kHeaderEnd.size();
+      break;
+    }
+    if (MonotonicNs() > deadline_ns) {
+      err = "no response header from " + host;
+      return std::nullopt;
+    }
+    pollfd p{fd, POLLIN, 0};
+    if (::poll(&p, 1, internal::kPollSliceMs) <= 0) {
+      continue;
+    }
+    const ssize_t n = ::recv(fd, buf.data(), buf.size(), 0);
+    if (n <= 0) {
+      err = head.empty()
+                ? "caster closed the connection"
+                : "truncated response: " + head.substr(0, kResponseExcerpt);
+      return std::nullopt;
+    }
+    head.append(buf.data(), static_cast<size_t>(n));
+  }
+  if (header_end == std::string::npos) {
+    err = "stopped";
+    return std::nullopt;
+  }
+  r.body = head.substr(header_end);
+  if (!r.icy) {
+    r.status_line = head.substr(0, head.find("\r\n"));
+    if (!internal::ParseHttpStatus(r.status_line, r.status)) {
+      r.status = 0;
+    }
+    r.chunked = internal::Lower(head.substr(0, header_end))
+                    .find("transfer-encoding: chunked") != std::string::npos;
+  }
+  return r;
+}
 
 void AppendDegMin(std::string& s, double deg, int deg_digits, char pos,
                   char neg) {
@@ -284,32 +228,17 @@ std::string BuildGga(const Fix& f) {
   AppendDegMin(body, f.lat_deg, 2, 'N', 'S');
   body += ',';
   AppendDegMin(body, f.lon_deg, 3, 'E', 'W');
-  int q = 0;
-  switch (f.type) {
-    case FixType::kSingle:
-      q = 1;
-      break;
-    case FixType::kDgnss:
-      q = 2;
-      break;
-    case FixType::kRtkFixed:
-      q = 4;
-      break;
-    case FixType::kRtkFloat:
-      q = 5;
-      break;
-    default:
-      q = f.has_position ? 1 : 0;
+  int q = ToGgaQuality(f.type);
+  // A caster only needs a usable position: the other solution kinds (PPS,
+  // dead reckoning, manual, simulation, none) are reported as autonomous.
+  if (q != 1 && q != 2 && q != 4 && q != 5) {
+    q = f.has_position ? 1 : 0;
   }
   std::snprintf(buf, sizeof buf, ",%d,%02d,%.1f,%.3f,M,%.3f,M,,", q, f.sats,
                 static_cast<double>(f.hdop), f.h_ell_m - f.geoid_sep_m,
                 f.geoid_sep_m);
   body += buf;
-  unsigned sum = 0;
-  for (char c : body) {
-    sum ^= static_cast<unsigned char>(c);
-  }
-  std::snprintf(buf, sizeof buf, "*%02X\r\n", sum & 0xFF);
+  std::snprintf(buf, sizeof buf, "*%02X\r\n", internal::NmeaXor(body));
   return "$" + body + buf;
 }
 
@@ -322,7 +251,7 @@ void NtripClient::SetPosition(const Fix& fix) {
   if (!fix.has_position) {
     return;
   }
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   position_ = fix;
 }
 
@@ -347,16 +276,16 @@ void NtripClient::Stop() {
 }
 
 NtripStatus NtripClient::Status() const {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   NtripStatus s = status_;
-  s.last_data_age_ns = last_data_ns_ == 0 ? -1 : NowNs() - last_data_ns_;
+  s.last_data_age_ns = last_data_ns_ == 0 ? -1 : MonotonicNs() - last_data_ns_;
   return s;
 }
 
 void NtripClient::SetState(NtripState s, const std::string& reason) {
   NtripState from;
   {
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     from = status_.state;
     if (s == NtripState::kAuthFailed || s == NtripState::kBackoff ||
         s == NtripState::kStalled) {
@@ -375,9 +304,9 @@ void NtripClient::SetState(NtripState s, const std::string& reason) {
 }
 
 bool NtripClient::BackoffWait() {
-  const int64_t until = NowNs() + int64_t{backoff_ms_} * 1'000'000;
-  while (!StopRequested() && NowNs() < until) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  const int64_t until = MonotonicNs() + MsToNs(backoff_ms_);
+  while (!StopRequested() && MonotonicNs() < until) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(kIdleWaitMs));
   }
   backoff_ms_ = std::min(backoff_ms_ * 2, opt_.backoff_max_ms);
   return !StopRequested();
@@ -390,7 +319,7 @@ void NtripClient::Run() {
       bool have = false;
       while (!StopRequested()) {
         {
-          std::lock_guard lk(mu_);
+          std::scoped_lock lk(mu_);
           have = position_.has_value();
         }
         if (have) {
@@ -398,7 +327,7 @@ void NtripClient::Run() {
         }
         SetState(NtripState::kNoPosition,
                  "waiting for a rover position to send as GGA");
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        std::this_thread::sleep_for(std::chrono::milliseconds(kIdleWaitMs));
       }
       if (!have) {
         break;
@@ -410,12 +339,12 @@ void NtripClient::Run() {
     Session();
     NtripState st;
     {
-      std::lock_guard lk(mu_);
+      std::scoped_lock lk(mu_);
       st = status_.state;
     }
     if (st == NtripState::kAuthFailed) {
       while (!StopRequested()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        std::this_thread::sleep_for(std::chrono::milliseconds(kIdleWaitMs));
       }
       break;
     }
@@ -424,7 +353,7 @@ void NtripClient::Run() {
     }
     std::string err;
     {
-      std::lock_guard lk(mu_);
+      std::scoped_lock lk(mu_);
       err = status_.last_error;
     }
     SetState(NtripState::kBackoff, err);
@@ -435,133 +364,90 @@ void NtripClient::Run() {
   SetState(NtripState::kStopped, "stopped");
 }
 
+void NtripClient::Fail(const std::string& why) {
+  std::scoped_lock lk(mu_);
+  status_.last_error = why;
+}
+
 void NtripClient::Session() {
-  auto fail = [&](const std::string& why) {
-    std::lock_guard lk(mu_);
-    status_.last_error = why;
-  };
   std::string err;
-  Socket sock =
-      Connect(opt_.host, opt_.port, opt_.connect_timeout_ms, err, &stop_);
-  if (!sock.Ok()) {
-    fail(err);
+  const internal::UniqueFd sock = internal::Connect(
+      opt_.host, opt_.port, opt_.connect_timeout_ms, err, &stop_);
+  if (!sock) {
+    Fail(err);
     return;
   }
   std::optional<Fix> pos;
   {
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     pos = position_;
   }
   const std::string gga = opt_.send_gga && pos ? BuildGga(*pos) : std::string();
-  std::string req = "GET /" + opt_.mountpoint +
-                    (opt_.version == 1 ? " HTTP/1.0\r\n" : " HTTP/1.1\r\n");
-  req += "User-Agent: " + UserAgent() + "\r\n";
-  if (opt_.version != 1) {
-    req += "Host: " + opt_.host + ":" + std::to_string(opt_.port) + "\r\n";
-    req += "Ntrip-Version: Ntrip/2.0\r\n";
-    if (!gga.empty()) {
-      req += "Ntrip-GGA: " + gga.substr(0, gga.size() - 2) + "\r\n";
-    }
-    req += "Connection: close\r\n";
-  }
-  if (!opt_.user.empty()) {
-    req += "Authorization: Basic " + Base64(opt_.user + ":" + opt_.password) +
-           "\r\n";
-  }
-  req += "\r\n";
-  if (!SendAll(sock.Fd(), req)) {
-    fail("cannot send request to " + opt_.host);
+  const HttpRequest request{
+      opt_.host, opt_.port, opt_.version, "/" + opt_.mountpoint,
+      gga,       opt_.user, opt_.password};
+  if (!internal::SendAll(sock.Get(), BuildRequest(request))) {
+    Fail("cannot send request to " + opt_.host);
     return;
   }
 
-  // Response header: "ICY 200 OK\r\n" (v1) or an HTTP header ending in a blank
-  // line.
-  std::string head;
-  std::array<char, 4096> buf{};
-  const int64_t deadline =
-      NowNs() + int64_t{opt_.connect_timeout_ms} * 1'000'000;
-  size_t header_end = std::string::npos;
-  bool icy = false;
-  while (!StopRequested()) {
-    if (head.starts_with("ICY 200 OK\r\n")) {
-      icy = true;
-      header_end = 12;
-      break;
-    }
-    header_end = head.find("\r\n\r\n");
-    if (header_end != std::string::npos) {
-      header_end += 4;
-      break;
-    }
-    if (NowNs() > deadline) {
-      fail("no response header from " + opt_.host);
-      return;
-    }
-    pollfd p{sock.Fd(), POLLIN, 0};
-    if (::poll(&p, 1, 50) <= 0) {
-      continue;
-    }
-    const ssize_t n = ::recv(sock.Fd(), buf.data(), buf.size(), 0);
-    if (n <= 0) {
-      fail(head.empty() ? "caster closed the connection"
-                        : "truncated response: " + head.substr(0, 40));
-      return;
-    }
-    head.append(buf.data(), static_cast<size_t>(n));
-  }
+  const auto response = ReadResponseHeader(
+      sock.Get(), MonotonicNs() + MsToNs(opt_.connect_timeout_ms), opt_.host,
+      &stop_, err);
   if (StopRequested()) {
     return;
   }
-
-  bool chunked = false;
-  int http = 0;
-  if (!icy) {
-    const std::string status_line = head.substr(0, head.find("\r\n"));
+  if (!response) {
+    Fail(err);
+    return;
+  }
+  if (!response->icy) {
+    const std::string& status_line = response->status_line;
     if (status_line.starts_with("SOURCETABLE")) {
-      fail("mountpoint '" + opt_.mountpoint +
+      Fail("mountpoint '" + opt_.mountpoint +
            "' not found (the caster answered with its sourcetable)");
       return;
     }
-    if (std::sscanf(status_line.c_str(), "HTTP/%*d.%*d %d", &http) != 1) {
-      fail("unexpected response: " + status_line);
+    if (response->status == 0) {
+      Fail("unexpected response: " + status_line);
       return;
     }
     {
-      std::lock_guard lk(mu_);
-      status_.http_status = http;
+      std::scoped_lock lk(mu_);
+      status_.http_status = response->status;
     }
-    if (http == 401) {
-      {
-        std::lock_guard lk(mu_);
-        status_.last_error = "HTTP 401 Unauthorized for mountpoint '" +
-                             opt_.mountpoint +
-                             "': check user name and password";
-      }
-      SetState(NtripState::kAuthFailed, "HTTP 401 Unauthorized");
+    if (response->status == kHttpUnauthorized) {
+      // SetState records the reason as the last error.
+      SetState(NtripState::kAuthFailed,
+               "HTTP 401 Unauthorized for mountpoint '" + opt_.mountpoint +
+                   "': check user name and password");
       return;
     }
-    if (http != 200) {
-      fail("HTTP " + std::to_string(http) + " from caster: " + status_line);
+    if (response->status != kHttpOk) {
+      Fail("HTTP " + std::to_string(response->status) +
+           " from caster: " + status_line);
       return;
     }
-    chunked =
-        Lower(head.substr(0, header_end)).find("transfer-encoding: chunked") !=
-        std::string::npos;
   }
-  if (opt_.version == 1 && !gga.empty() && !SendAll(sock.Fd(), gga)) {
-    fail("cannot send GGA");
+  // NTRIP 1 has no request header for the position: it follows the request.
+  if (opt_.version == 1 && !gga.empty() &&
+      !internal::SendAll(sock.Get(), gga)) {
+    Fail("cannot send GGA");
     return;
   }
 
   {
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     ++status_.connects;
-    last_data_ns_ = NowNs();
+    last_data_ns_ = MonotonicNs();
   }
   SetState(NtripState::kStreaming, "connected to " + opt_.mountpoint);
+  StreamLoop(sock.Get(), response->chunked, response->body);
+}
 
+void NtripClient::StreamLoop(int fd, bool chunked, std::string_view early) {
   StreamFramer framer;
-  Dechunker dechunk;
+  internal::Dechunker dechunk;
   auto forward = [&](std::string_view data) {
     framer.Feed(
         std::span(reinterpret_cast<const uint8_t*>(data.data()), data.size()),
@@ -570,15 +456,15 @@ void NtripClient::Session() {
             return;
           }
           sink_.Inject(f.bytes);
-          std::lock_guard lk(mu_);
+          std::scoped_lock lk(mu_);
           ++status_.frames;
         });
   };
   auto consume = [&](std::string_view data) {
     {
-      std::lock_guard lk(mu_);
+      std::scoped_lock lk(mu_);
       status_.bytes += data.size();
-      last_data_ns_ = NowNs();
+      last_data_ns_ = MonotonicNs();
     }
     backoff_ms_ = opt_.backoff_min_ms;
     if (!chunked) {
@@ -587,48 +473,49 @@ void NtripClient::Session() {
     }
     return dechunk.Feed(data, forward);
   };
-  if (head.size() > header_end &&
-      !consume(std::string_view(head).substr(header_end))) {
-    fail("bad chunked encoding");
+  if (!early.empty() && !consume(early)) {
+    Fail("bad chunked encoding");
     return;
   }
 
-  int64_t next_gga = NowNs() + int64_t{opt_.gga_interval_ms} * 1'000'000;
+  std::array<char, kRecvBufferSize> buf{};
+  int64_t next_gga = MonotonicNs() + MsToNs(opt_.gga_interval_ms);
   while (!StopRequested()) {
-    const int64_t now = NowNs();
+    const int64_t now = MonotonicNs();
     if (opt_.send_gga && now >= next_gga) {
-      next_gga = now + int64_t{opt_.gga_interval_ms} * 1'000'000;
+      next_gga = now + MsToNs(opt_.gga_interval_ms);
+      std::optional<Fix> pos;
       {
-        std::lock_guard lk(mu_);
+        std::scoped_lock lk(mu_);
         pos = position_;
       }
-      if (pos && !SendAll(sock.Fd(), BuildGga(*pos))) {
-        fail("connection lost while sending GGA");
+      if (pos && !internal::SendAll(fd, BuildGga(*pos))) {
+        Fail("connection lost while sending GGA");
         return;
       }
     }
-    int64_t last;
+    int64_t last = 0;
     {
-      std::lock_guard lk(mu_);
+      std::scoped_lock lk(mu_);
       last = last_data_ns_;
     }
-    if (now - last > int64_t{opt_.stall_after_ms} * 1'000'000) {
+    if (now - last > MsToNs(opt_.stall_after_ms)) {
       const std::string why =
           "no corrections for " + std::to_string(opt_.stall_after_ms) + " ms";
       SetState(NtripState::kStalled, why);
       return;
     }
-    pollfd p{sock.Fd(), POLLIN, 0};
-    if (::poll(&p, 1, 50) <= 0) {
+    pollfd p{fd, POLLIN, 0};
+    if (::poll(&p, 1, internal::kPollSliceMs) <= 0) {
       continue;
     }
-    const ssize_t n = ::recv(sock.Fd(), buf.data(), buf.size(), 0);
+    const ssize_t n = ::recv(fd, buf.data(), buf.size(), 0);
     if (n <= 0) {
-      fail("caster closed the connection");
+      Fail("caster closed the connection");
       return;
     }
     if (!consume(std::string_view(buf.data(), static_cast<size_t>(n)))) {
-      fail("bad chunked encoding");
+      Fail("bad chunked encoding");
       return;
     }
   }
@@ -636,50 +523,54 @@ void NtripClient::Session() {
 
 std::optional<std::string> NtripClient::FetchSourcetable(
     const std::string& host, int port, int version, std::string& err) {
-  Socket sock = Connect(host, port, 5000, err);
-  if (!sock.Ok()) {
+  const internal::UniqueFd sock =
+      internal::Connect(host, port, kSourcetableConnectTimeoutMs, err);
+  if (!sock) {
     return std::nullopt;
   }
-  std::string req = version == 1 ? "GET / HTTP/1.0\r\n" : "GET / HTTP/1.1\r\n";
-  req += "User-Agent: " + UserAgent() + "\r\n";
-  if (version != 1) {
-    req += "Host: " + host + ":" + std::to_string(port) +
-           "\r\nNtrip-Version: Ntrip/2.0\r\n";
-  }
-  req += "Connection: close\r\n\r\n";
-  if (!SendAll(sock.Fd(), req)) {
+  const HttpRequest request{host,
+                            port,
+                            version,
+                            "/",
+                            "",
+                            "",
+                            "",
+                            /*close_connection=*/true};
+  if (!internal::SendAll(sock.Get(), BuildRequest(request))) {
     err = "cannot send request";
     return std::nullopt;
   }
-  std::string all;
-  std::array<char, 4096> buf{};
-  const int64_t deadline = NowNs() + 10'000'000'000;
-  while (NowNs() < deadline &&
-         all.find("ENDSOURCETABLE") == std::string::npos) {
-    pollfd p{sock.Fd(), POLLIN, 0};
-    if (::poll(&p, 1, 100) <= 0) {
-      continue;
-    }
-    const ssize_t n = ::recv(sock.Fd(), buf.data(), buf.size(), 0);
-    if (n <= 0) {
-      break;
-    }
-    all.append(buf.data(), static_cast<size_t>(n));
-  }
-  const size_t end = all.find("\r\n\r\n");
-  if (end == std::string::npos) {
+  const int64_t deadline = MonotonicNs() + MsToNs(kSourcetableReadTimeoutMs);
+  std::string header_err;
+  auto response =
+      ReadResponseHeader(sock.Get(), deadline, host, nullptr, header_err);
+  if (!response || response->icy) {
     err = "no sourcetable from " + host;
     return std::nullopt;
   }
-  std::string body = all.substr(end + 4);
-  if (Lower(all.substr(0, end)).find("transfer-encoding: chunked") !=
-      std::string::npos) {
-    std::string plain;
-    Dechunker d;
-    d.Feed(body, [&](std::string_view s) { plain += s; });
-    body = plain;
+  // The table ends with ENDSOURCETABLE; casters close the connection after
+  // it, so a closed connection ends the read too.
+  std::string& raw = response->body;
+  std::array<char, kRecvBufferSize> buf{};
+  while (MonotonicNs() < deadline &&
+         raw.find("ENDSOURCETABLE") == std::string::npos) {
+    pollfd p{sock.Get(), POLLIN, 0};
+    if (::poll(&p, 1, internal::kPollSliceMs) <= 0) {
+      continue;
+    }
+    const ssize_t n = ::recv(sock.Get(), buf.data(), buf.size(), 0);
+    if (n <= 0) {
+      break;
+    }
+    raw.append(buf.data(), static_cast<size_t>(n));
   }
-  return body;
+  if (!response->chunked) {
+    return std::move(raw);
+  }
+  std::string plain;
+  internal::Dechunker d;
+  (void)d.Feed(raw, [&](std::string_view part) { plain += part; });
+  return plain;
 }
 
 }  // namespace lgrtk

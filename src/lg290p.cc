@@ -2,15 +2,16 @@
 #include "lgrtk/lg290p.h"
 
 #include <algorithm>
-#include <charconv>
 #include <cmath>
 #include <cstdio>
+
+#include "internal/text.h"
 
 namespace lgrtk::lg290p {
 
 namespace {
 
-Command Make(std::string body, std::string reply_to, bool is_write,
+Command Make(const std::string& body, std::string reply_to, bool is_write,
              bool needs_reset = false, std::string match_value = {}) {
   Command c;
   c.text = BuildCommand(body);
@@ -47,14 +48,16 @@ std::string MsgBody(char rw, std::string_view msg, int rate, int version) {
   return b;
 }
 
-bool ToInt(const std::string& s, int& out) {
-  const auto r = std::from_chars(s.data(), s.data() + s.size(), out);
-  return r.ec == std::errc{} && r.ptr == s.data() + s.size();
-}
-
-bool ToDouble(const std::string& s, double& out) {
-  const auto r = std::from_chars(s.data(), s.data() + s.size(), out);
-  return r.ec == std::errc{} && r.ptr == s.data() + s.size();
+// Reply and OwnedReply differ only in how they hold their strings.
+template <class R>
+bool MatchesReply(const Command& cmd, const R& reply) noexcept {
+  if (cmd.reply_to.empty() || reply.command != cmd.reply_to) {
+    return false;
+  }
+  if (!reply.ok || cmd.match_value.empty() || reply.values.empty()) {
+    return true;
+  }
+  return reply.values[0] == cmd.match_value;
 }
 
 bool SameTenth(const std::optional<double>& a, const std::optional<double>& b) {
@@ -66,12 +69,8 @@ constexpr int kBauds[] = {9600, 115200, 230400, 460800, 921600, 3000000};
 }  // namespace
 
 std::string BuildCommand(std::string_view body) {
-  unsigned sum = 0;
-  for (char c : body) {
-    sum ^= static_cast<unsigned char>(c);
-  }
   char tail[8];
-  std::snprintf(tail, sizeof tail, "*%02X\r\n", sum & 0xFF);
+  std::snprintf(tail, sizeof tail, "*%02X\r\n", internal::NmeaXor(body));
   std::string s = "$";
   s += body;
   s += tail;
@@ -79,23 +78,11 @@ std::string BuildCommand(std::string_view body) {
 }
 
 bool Matches(const Command& cmd, const nmea::Reply& reply) noexcept {
-  if (cmd.reply_to.empty() || reply.command != cmd.reply_to) {
-    return false;
-  }
-  if (!reply.ok || cmd.match_value.empty() || reply.values.empty()) {
-    return true;
-  }
-  return reply.values[0] == cmd.match_value;
+  return MatchesReply(cmd, reply);
 }
 
 bool Matches(const Command& cmd, const nmea::OwnedReply& reply) noexcept {
-  if (cmd.reply_to.empty() || reply.command != cmd.reply_to) {
-    return false;
-  }
-  if (!reply.ok || cmd.match_value.empty() || reply.values.empty()) {
-    return true;
-  }
-  return reply.values[0] == cmd.match_value;
+  return MatchesReply(cmd, reply);
 }
 
 ReceiverConfig DefaultRoverConfig() {
@@ -245,6 +232,22 @@ Command Restart(Start s) {
   }
   return Make("PQTMHOT", "", true);
 }
+std::optional<Command> RestartByName(std::string_view kind) {
+  if (kind == "hot") {
+    return Restart(Start::kHot);
+  }
+  if (kind == "warm") {
+    return Restart(Start::kWarm);
+  }
+  if (kind == "cold") {
+    return Restart(Start::kCold);
+  }
+  if (kind == "soft") {
+    return SoftwareReset();
+  }
+  return std::nullopt;
+}
+
 Command RestoreDefaults() {
   return Make("PQTMRESTOREPAR", "PQTMRESTOREPAR", true, true);
 }
@@ -289,7 +292,7 @@ void ApplyReadReply(const nmea::OwnedReply& r, ReceiverConfig& have) {
   std::vector<int> n(v.size(), 0);
   std::vector<bool> is_int(v.size(), false);
   for (size_t i = 0; i < v.size(); ++i) {
-    is_int[i] = ToInt(v[i], n[i]);
+    is_int[i] = internal::ParseNumber(v[i], n[i]);
   }
   auto all_int = [&](size_t count, size_t from = 0) {
     if (v.size() < from + count) {
@@ -325,12 +328,12 @@ void ApplyReadReply(const nmea::OwnedReply& r, ReceiverConfig& have) {
                                          n[3] != 0, n[4] != 0, n[5] != 0};
   } else if (c == "PQTMCFGELETHD") {
     double d = 0;
-    if (ToDouble(v[0], d)) {
+    if (internal::ParseNumber(v[0], d)) {
       have.elevation_mask_deg = d;
     }
   } else if (c == "PQTMCFGCNRTHD") {
     double d = 0;
-    if (ToDouble(v[0], d)) {
+    if (internal::ParseNumber(v[0], d)) {
       have.cnr_mask_dbhz = d;
     }
   } else if (c == "PQTMCFGRCVRMODE" && all_int(1) && (n[0] == 1 || n[0] == 2)) {
@@ -351,16 +354,20 @@ std::vector<Command> PlanConfig(const ReceiverConfig& want,
     }
   };
   std::vector<Command> out;
-  auto add = [&](std::optional<Command> c) {
+  // A wanted value outside the documented range has no command: reported
+  // like an unreadable setting, the receiver keeps its value.
+  auto add = [&](std::optional<Command> c, std::string_view name) {
     if (c) {
       out.push_back(std::move(*c));
+    } else {
+      skip(std::string(name) + " (wanted value out of range)");
     }
   };
   if (want.fix_interval_ms) {
     if (!have.fix_interval_ms) {
       skip("PQTMCFGFIXRATE");
     } else if (want.fix_interval_ms != have.fix_interval_ms) {
-      add(SetFixRate(*want.fix_interval_ms));
+      add(SetFixRate(*want.fix_interval_ms), "PQTMCFGFIXRATE");
     }
   }
   for (const auto& m : want.message_rates) {
@@ -391,7 +398,7 @@ std::vector<Command> PlanConfig(const ReceiverConfig& want,
       const bool same_timeout = have.rtk->timeout_s == 0 ||
                                 want.rtk->timeout_s == have.rtk->timeout_s;
       if (!same_modes || !same_timeout) {
-        add(SetRtk(*want.rtk));
+        add(SetRtk(*want.rtk), "PQTMCFGRTK");
       }
     }
   }
@@ -406,14 +413,14 @@ std::vector<Command> PlanConfig(const ReceiverConfig& want,
     if (!have.elevation_mask_deg) {
       skip("PQTMCFGELETHD");
     } else if (!SameTenth(want.elevation_mask_deg, have.elevation_mask_deg)) {
-      add(SetElevationMask(*want.elevation_mask_deg));
+      add(SetElevationMask(*want.elevation_mask_deg), "PQTMCFGELETHD");
     }
   }
   if (want.cnr_mask_dbhz) {
     if (!have.cnr_mask_dbhz) {
       skip("PQTMCFGCNRTHD");
     } else if (!SameTenth(want.cnr_mask_dbhz, have.cnr_mask_dbhz)) {
-      add(SetCnrMask(*want.cnr_mask_dbhz));
+      add(SetCnrMask(*want.cnr_mask_dbhz), "PQTMCFGCNRTHD");
     }
   }
   if (want.receiver_mode) {
@@ -427,7 +434,7 @@ std::vector<Command> PlanConfig(const ReceiverConfig& want,
     if (!have.pps) {
       skip("PQTMCFGPPS");
     } else if (want.pps != have.pps) {
-      add(SetPps(*want.pps));
+      add(SetPps(*want.pps), "PQTMCFGPPS");
     }
   }
   if (out.empty()) {

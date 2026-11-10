@@ -20,6 +20,7 @@ class FakeCaster {
     kUnauthorized,  ///< HTTP 401
     kDropAfterOne,  ///< sends one frame, then closes (every connection)
     kSilent,        ///< 200 OK, then no data
+    kSourcetable,   ///< answers every request with its sourcetable, closes
   };
   explicit FakeCaster(Mode mode);
   ~FakeCaster();
@@ -34,6 +35,8 @@ class FakeCaster {
       const;  ///< everything clients sent after the headers
   /// The RTCM frame the caster sends repeatedly.
   static std::vector<uint8_t> Frame();
+  /// The sourcetable body the caster sends in kSourcetable mode.
+  static std::string Sourcetable();
 
  private:
   void Loop();

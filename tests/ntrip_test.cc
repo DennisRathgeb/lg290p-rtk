@@ -1,31 +1,33 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/ntrip.h"
 
-#include <gtest/gtest.h>
-
 #include <chrono>
 #include <mutex>
 #include <thread>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 #include "sim/fake_caster.h"
+#include "test_util.h"
 
 namespace lgrtk {
 namespace {
 
 using namespace std::chrono_literals;
 using test::FakeCaster;
+using test::WaitFor;
 
 struct VecSink : CorrectionSink {
   std::mutex mu;
   std::vector<std::vector<uint8_t>> frames;
   bool Inject(std::span<const uint8_t> f) override {
-    std::lock_guard lk(mu);
+    std::scoped_lock lk(mu);
     frames.emplace_back(f.begin(), f.end());
     return true;
   }
   size_t Count() {
-    std::lock_guard lk(mu);
+    std::scoped_lock lk(mu);
     return frames.size();
   }
 };
@@ -59,18 +61,6 @@ Fix SomeFix() {
   return f;
 }
 
-template <class Pred>
-bool WaitFor(Pred p, std::chrono::milliseconds t) {
-  const auto end = std::chrono::steady_clock::now() + t;
-  while (std::chrono::steady_clock::now() < end) {
-    if (p()) {
-      return true;
-    }
-    std::this_thread::sleep_for(10ms);
-  }
-  return p();
-}
-
 TEST(NtripTest, V2ChunkedStreamsToSink) {
   FakeCaster caster(FakeCaster::Mode::kV2Chunked);
   VecSink sink;
@@ -79,7 +69,7 @@ TEST(NtripTest, V2ChunkedStreamsToSink) {
   ASSERT_TRUE(WaitFor([&] { return sink.Count() >= 3; }, 2s));
   EXPECT_EQ(c.Status().state, NtripState::kStreaming);
   {
-    std::lock_guard lk(sink.mu);
+    std::scoped_lock lk(sink.mu);
     for (const auto& f : sink.frames) {
       EXPECT_EQ(f, FakeCaster::Frame());
     }
@@ -155,6 +145,10 @@ TEST(NtripTest, AuthFailureStops) {
   std::this_thread::sleep_for(500ms);
   EXPECT_EQ(caster.Connections(), 1);  // no hammering
   EXPECT_EQ(c.Status().http_status, 401);
+  // The error says what to check, not just the status.
+  EXPECT_NE(c.Status().last_error.find("check user name and password"),
+            std::string::npos)
+      << c.Status().last_error;
 }
 
 TEST(NtripTest, ReconnectsAfterDrop) {
@@ -174,13 +168,13 @@ TEST(NtripTest, StalledWhenSilent) {
   std::vector<NtripState> seen;
   NtripClient c(Opts(caster), sink);
   c.OnStatus([&](NtripState, NtripState to, const std::string&) {
-    std::lock_guard lk(mu);
+    std::scoped_lock lk(mu);
     seen.push_back(to);
   });
   ASSERT_TRUE(c.Start());
   ASSERT_TRUE(WaitFor(
       [&] {
-        std::lock_guard lk(mu);
+        std::scoped_lock lk(mu);
         return std::find(seen.begin(), seen.end(), NtripState::kStalled) !=
                seen.end();
       },
@@ -196,7 +190,7 @@ TEST(NtripTest, PasswordNotInStatusOrErrors) {
   std::string reasons;
   NtripClient c(Opts(caster), sink);
   c.OnStatus([&](NtripState, NtripState, const std::string& r) {
-    std::lock_guard lk(mu);
+    std::scoped_lock lk(mu);
     reasons += r;
   });
   ASSERT_TRUE(c.Start());
@@ -221,6 +215,43 @@ TEST(NtripTest, StopIsFastWhileConnecting) {
   const auto t0 = std::chrono::steady_clock::now();
   c.Stop();
   EXPECT_LT(std::chrono::steady_clock::now() - t0, 1200ms);
+}
+
+TEST(NtripTest, FetchSourcetableV2Chunked) {
+  FakeCaster caster(FakeCaster::Mode::kSourcetable);
+  std::string err;
+  const auto table =
+      NtripClient::FetchSourcetable("127.0.0.1", caster.Port(), 2, err);
+  ASSERT_TRUE(table) << err;
+  EXPECT_EQ(*table, FakeCaster::Sourcetable());
+  const auto req = caster.Requests().at(0);
+  EXPECT_NE(req.find("GET / HTTP/1.1"), std::string::npos) << req;
+  EXPECT_NE(req.find("Ntrip-Version: Ntrip/2.0"), std::string::npos) << req;
+}
+
+TEST(NtripTest, FetchSourcetableV1) {
+  FakeCaster caster(FakeCaster::Mode::kSourcetable);
+  std::string err;
+  const auto table =
+      NtripClient::FetchSourcetable("127.0.0.1", caster.Port(), 1, err);
+  ASSERT_TRUE(table) << err;
+  EXPECT_EQ(*table, FakeCaster::Sourcetable());
+  EXPECT_NE(caster.Requests().at(0).find("GET / HTTP/1.0"), std::string::npos);
+  EXPECT_NE(caster.Requests().at(0).find("Connection: close"),
+            std::string::npos);
+}
+
+TEST(NtripTest, UnknownMountpointReportsSourcetable) {
+  FakeCaster caster(FakeCaster::Mode::kSourcetable);
+  VecSink sink;
+  NtripClient c(Opts(caster, 1), sink);
+  ASSERT_TRUE(c.Start());
+  ASSERT_TRUE(WaitFor(
+      [&] {
+        return c.Status().last_error.find("not found") != std::string::npos;
+      },
+      2s));
+  EXPECT_NE(c.Status().last_error.find("NALPS"), std::string::npos);
 }
 
 TEST(NtripTest, BuildGgaFormat) {

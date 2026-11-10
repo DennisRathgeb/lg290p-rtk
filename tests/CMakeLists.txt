@@ -10,18 +10,21 @@ include(GoogleTest)
 
 add_executable(lgrtk_tests
   version_test.cc
+  internal_test.cc
   framer_test.cc
   nmea_test.cc
   epoch_test.cc
   lg290p_test.cc
   serial_test.cc
   receiver_test.cc
+  local_frame_test.cc
   projection_test.cc
   ntrip_test.cc
+  net_test.cc
   sim/fake_caster.cc
   sim/sim_lg290p.cc
 )
-target_include_directories(lgrtk_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(lgrtk_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(lgrtk_tests PRIVATE util lgrtk::lgrtk GTest::gtest_main lgrtk_warnings)
 if(LGRTK_HAVE_PROJ)
   target_link_libraries(lgrtk_tests PRIVATE lgrtk::projection)
@@ -31,7 +34,7 @@ gtest_discover_tests(lgrtk_tests DISCOVERY_TIMEOUT 30)
 
 if(LGRTK_BUILD_APPS)
   add_executable(sim_lg290p_tool sim/sim_tool.cc sim/sim_lg290p.cc)
-  target_include_directories(sim_lg290p_tool PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_include_directories(sim_lg290p_tool PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src)
   target_link_libraries(sim_lg290p_tool PRIVATE util lgrtk::lgrtk)
   add_test(NAME CliTest.EndToEnd
            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cli_test.sh $<TARGET_FILE:lgrtk_cli> $<TARGET_FILE:sim_lg290p_tool>)
@@ -49,11 +52,13 @@ if(LGRTK_BUILD_DAEMON)
     daemon/config_test.cc
     daemon/gpsd_json_test.cc
     daemon/sky_test.cc
+    daemon/event_loop_test.cc
     daemon/gpsd_server_test.cc
     daemon/raw_tap_test.cc
     daemon/chrony_test.cc
     daemon/sd_notify_test.cc
     daemon/control_test.cc
+    daemon/daemon_test.cc
   )
   target_include_directories(lgrtkd_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries(lgrtkd_tests PRIVATE util lgrtkd_core GTest::gtest_main lgrtk_warnings)

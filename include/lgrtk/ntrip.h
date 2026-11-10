@@ -12,6 +12,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 
 #include "lgrtk/correction_sink.h"
@@ -26,7 +27,7 @@ enum class NtripState : uint8_t {
   kStreaming,   ///< corrections arrive
   kStalled,     ///< connected but no data for stall_after_ms (reconnects)
   kBackoff,     ///< waiting before the next attempt
-  kAuthFailed,  ///< HTTP 401: stops until Start() is called again
+  kAuthFailed,  ///< HTTP 401: no further attempts until Stop(), then Start()
   kNoPosition,  ///< send_gga is on and no position is known yet
   kStopped,     ///< Stop() was called
 };
@@ -76,6 +77,8 @@ class NtripClient {
   ~NtripClient();
   NtripClient(const NtripClient&) = delete;
   NtripClient& operator=(const NtripClient&) = delete;
+  NtripClient(NtripClient&&) = delete;
+  NtripClient& operator=(NtripClient&&) = delete;
 
   /// Latest rover position for GGA upload. Thread-safe; call from OnFix.
   void SetPosition(const Fix& fix);
@@ -94,15 +97,20 @@ class NtripClient {
   [[nodiscard]] NtripStatus Status() const;
 
   /// Downloads a caster's sourcetable (list of mountpoints).
-  static std::optional<std::string> FetchSourcetable(const std::string& host,
-                                                     int port, int version,
-                                                     std::string& err);
+  [[nodiscard]] static std::optional<std::string> FetchSourcetable(
+      const std::string& host, int port, int version, std::string& err);
 
  private:
   void Run();
   void SetState(NtripState s, const std::string& reason);
   /// One connection; returns when it ends. Sets state/err on failure.
   void Session();
+  /// Forwards corrections from the connected socket `fd` until the
+  /// connection ends, stalls or Stop() is called. `early` holds bytes that
+  /// arrived with the response header.
+  void StreamLoop(int fd, bool chunked, std::string_view early);
+  /// Records `why` as the last error.
+  void Fail(const std::string& why);
   bool BackoffWait();
   bool StopRequested() const { return stop_.load(std::memory_order_relaxed); }
 

@@ -57,6 +57,15 @@ TEST(Lg290pTest, ReplyExpectations) {
   EXPECT_FALSE(SetMessageRate("GST", 1).needs_reset);
 }
 
+TEST(Lg290pTest, RestartByName) {
+  EXPECT_EQ(RestartByName("hot")->text, Restart(Start::kHot).text);
+  EXPECT_EQ(RestartByName("warm")->text, Restart(Start::kWarm).text);
+  EXPECT_EQ(RestartByName("cold")->text, Restart(Start::kCold).text);
+  EXPECT_EQ(RestartByName("soft")->text, SoftwareReset().text);
+  EXPECT_FALSE(RestartByName("factory"));
+  EXPECT_FALSE(RestartByName("lukewarm"));
+}
+
 TEST(Lg290pTest, RangesRejected) {
   EXPECT_FALSE(SetFixRate(49));
   EXPECT_FALSE(SetFixRate(1001));
@@ -157,6 +166,21 @@ TEST(Lg290pTest, PlanConfigSkipsUnknownCurrentValues) {
   EXPECT_TRUE(PlanConfig(want, have, &unknown)
                   .empty());  // no blind writes, no NVM wear
   ASSERT_EQ(unknown.size(), 2u);
+}
+
+TEST(Lg290pTest, PlanConfigReportsOutOfRangeWantedValues) {
+  ReceiverConfig want;
+  want.fix_interval_ms = 20;       // below 50 ms
+  want.elevation_mask_deg = 95.0;  // above 90 deg
+  ReceiverConfig have;
+  have.fix_interval_ms = 100;
+  have.elevation_mask_deg = 5.0;
+  std::vector<std::string> unknown;
+  EXPECT_TRUE(PlanConfig(want, have, &unknown).empty());
+  ASSERT_EQ(unknown.size(), 2u);
+  EXPECT_NE(unknown[0].find("PQTMCFGFIXRATE"), std::string::npos);
+  EXPECT_NE(unknown[0].find("out of range"), std::string::npos);
+  EXPECT_NE(unknown[1].find("PQTMCFGELETHD"), std::string::npos);
 }
 
 TEST(Lg290pTest, RtkReplyWithoutTimeout) {

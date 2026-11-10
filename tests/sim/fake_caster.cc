@@ -65,12 +65,12 @@ FakeCaster::~FakeCaster() {
 }
 
 std::vector<std::string> FakeCaster::Requests() const {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   return requests_;
 }
 
 std::string FakeCaster::ClientBytes() const {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   return client_bytes_;
 }
 
@@ -88,6 +88,12 @@ void FakeCaster::Loop() {
     Serve(fd);
     ::close(fd);
   }
+}
+
+std::string FakeCaster::Sourcetable() {
+  return "STR;NALPS;Nalps;RTCM 3.3;1077(1),1087(1);2;GPS+GLO;SNIP;CHE;46.63;"
+         "8.78;1;0;sNTRIP;none;B;N;9600;\r\n"
+         "ENDSOURCETABLE\r\n";
 }
 
 void FakeCaster::Serve(int fd) {
@@ -110,7 +116,7 @@ void FakeCaster::Serve(int fd) {
   }
   const size_t end = req.find("\r\n\r\n");
   {
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     requests_.push_back(req.substr(0, end));
     if (end != std::string::npos) {
       client_bytes_ += req.substr(end + 4);
@@ -120,6 +126,28 @@ void FakeCaster::Serve(int fd) {
     case Mode::kUnauthorized: {
       const char r[] = "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n";
       SendAll(fd, r, sizeof r - 1);
+      return;
+    }
+    case Mode::kSourcetable: {
+      const std::string body = Sourcetable();
+      std::string r;
+      if (req.find(" HTTP/1.0\r\n") != std::string::npos) {
+        r = "SOURCETABLE 200 OK\r\nContent-Type: text/plain\r\n"
+            "Content-Length: " +
+            std::to_string(body.size()) + "\r\n\r\n" + body;
+      } else {
+        // Chunked, split mid-line.
+        const size_t half = body.size() / 2;
+        char size[32];
+        r = "HTTP/1.1 200 OK\r\nNtrip-Version: Ntrip/2.0\r\n"
+            "Content-Type: gnss/sourcetable\r\nTransfer-Encoding: "
+            "chunked\r\n\r\n";
+        std::snprintf(size, sizeof size, "%zx\r\n", half);
+        r += size + body.substr(0, half) + "\r\n";
+        std::snprintf(size, sizeof size, "%zx\r\n", body.size() - half);
+        r += size + body.substr(half) + "\r\n0\r\n\r\n";
+      }
+      SendAll(fd, r.data(), r.size());
       return;
     }
     case Mode::kV1Icy: {
@@ -147,7 +175,7 @@ void FakeCaster::Serve(int fd) {
       if (n <= 0) {
         return;
       }
-      std::lock_guard lk(mu_);
+      std::scoped_lock lk(mu_);
       client_bytes_.append(buf, static_cast<size_t>(n));
     }
     if (mode_ == Mode::kSilent) {

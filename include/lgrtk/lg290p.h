@@ -168,6 +168,10 @@ struct ReceiverConfig {
 [[nodiscard]] Command Restart(Start s);
 /// Factory defaults (takes effect after a reset).
 [[nodiscard]] Command RestoreDefaults();
+/// The restart named "hot", "warm", "cold" or "soft" (software reset);
+/// nullopt for anything else, including "factory", which callers must
+/// confirm separately.
+[[nodiscard]] std::optional<Command> RestartByName(std::string_view kind);
 
 /// Get commands for every setting `want` manages.
 [[nodiscard]] std::vector<Command> ReadCommands(const ReceiverConfig& want);
@@ -175,9 +179,10 @@ struct ReceiverConfig {
 void ApplyReadReply(const nmea::OwnedReply& reply, ReceiverConfig& have);
 /// Writes needed to get from `have` to `want`. Settings whose current value
 /// is unknown (read-back failed) are not written; their names go to
-/// `unknown`. The writes are followed by SaveParams when anything changed and
-/// by SoftwareReset when a changed setting needs one. Empty when nothing
-/// differs.
+/// `unknown`. So do settings whose wanted value is outside the documented
+/// range (the name followed by " (wanted value out of range)"). The writes are
+/// followed by SaveParams when anything changed and by SoftwareReset when a
+/// changed setting needs one. Empty when nothing differs.
 [[nodiscard]] std::vector<Command> PlanConfig(
     const ReceiverConfig& want, const ReceiverConfig& have,
     std::vector<std::string>* unknown = nullptr);

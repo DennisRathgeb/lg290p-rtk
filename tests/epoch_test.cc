@@ -1,11 +1,11 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/epoch.h"
 
-#include <gtest/gtest.h>
-
 #include <fstream>
 #include <string>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "test_util.h"
 
@@ -18,7 +18,7 @@ std::string Gga(const char* utc, int q = 1, const char* age = "") {
   return Nmea(std::string("GNGGA,") + utc +
               ",4637.80000000,N,00846.80000000,E," + std::to_string(q) +
               ",20,0.80,1950.000,M,49.100,M," + age + "," +
-              (age[0] ? "0042" : ""));
+              (age[0] != '\0' ? "0042" : ""));
 }
 std::string Rmc(const char* utc) {
   return Nmea(std::string("GNRMC,") + utc +
@@ -180,6 +180,14 @@ TEST(EpochTest, FixTypeMapping) {
   EXPECT_EQ(FixTypeFromGgaQuality(5), FixType::kRtkFloat);
   EXPECT_EQ(FixTypeFromGgaQuality(9), FixType::kNone);
   EXPECT_STREQ(ToString(FixType::kRtkFixed), "rtk-fixed");
+}
+
+TEST(EpochTest, GgaQualityRoundTrip) {
+  for (uint8_t q = 0; q <= 8; ++q) {
+    EXPECT_EQ(ToGgaQuality(FixTypeFromGgaQuality(q)), q);
+  }
+  EXPECT_EQ(ToGgaQuality(FixType::kRtkFloat), 5);
+  EXPECT_EQ(ToGgaQuality(FixTypeFromGgaQuality(9)), 0);  // unknown -> kNone
 }
 
 }  // namespace

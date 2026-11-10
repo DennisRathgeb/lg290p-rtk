@@ -19,10 +19,11 @@ class SerialPort {
   /// Opens `path` raw 8N1 at `baud` with TIOCEXCL so no other process can
   /// interleave (ModemManager, a second driver). On failure returns nullopt
   /// and a reason naming the path in `err`.
-  static std::optional<SerialPort> Open(const std::string& path, int baud,
-                                        std::string& err);
+  [[nodiscard]] static std::optional<SerialPort> Open(const std::string& path,
+                                                      int baud,
+                                                      std::string& err);
   /// True for the speeds the LG290P supports (9600 … 921600).
-  static bool SupportedBaud(int baud) noexcept;
+  [[nodiscard]] static bool SupportedBaud(int baud) noexcept;
 
   /// Moves the descriptor.
   SerialPort(SerialPort&& o) noexcept;

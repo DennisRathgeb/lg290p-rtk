@@ -6,6 +6,8 @@
 #ifndef LGRTK_SRC_DAEMON_DAEMON_H_
 #define LGRTK_SRC_DAEMON_DAEMON_H_
 
+#include <signal.h>
+
 #include <memory>
 #include <string>
 
@@ -21,6 +23,10 @@
 
 namespace lgrtk::daemon {
 
+/// SIGTERM and SIGINT: the signals that stop lgrtkd. Block them in every
+/// thread before Run(handle_signals = true).
+[[nodiscard]] sigset_t ShutdownSignals();
+
 /// The daemon. Start() binds and starts everything, Run() serves until
 /// Quit(), Stop() shuts the receiver and NTRIP down.
 class Daemon {
@@ -30,6 +36,8 @@ class Daemon {
   ~Daemon();
   Daemon(const Daemon&) = delete;
   Daemon& operator=(const Daemon&) = delete;
+  Daemon(Daemon&&) = delete;
+  Daemon& operator=(Daemon&&) = delete;
 
   /// Binds every socket and starts the receiver (and NTRIP). False with
   /// `err` when a socket cannot be bound or the password cannot be read.
@@ -39,7 +47,8 @@ class Daemon {
   void Run(bool handle_signals);
   /// Makes Run() return. Thread-safe.
   void Quit() { loop_.Quit(); }
-  /// Stops NTRIP and the receiver. Call after Run() returned.
+  /// Stops NTRIP and the receiver and tells systemd (STOPPING=1). Call after
+  /// Run() returned; later calls, including the destructor's, do nothing.
   void Stop();
 
  private:
@@ -62,6 +71,7 @@ class Daemon {
   std::unique_ptr<Lg290pReceiver> rx_;
   std::unique_ptr<NtripClient> ntrip_;
   State state_ = State::kDisconnected;
+  bool stopped_ = false;
 };
 
 }  // namespace lgrtk::daemon

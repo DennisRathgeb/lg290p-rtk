@@ -42,8 +42,7 @@ void LocalFrame::EcefToGeodetic(const double xyz[3], double& lat_deg,
   h_m = h;
 }
 
-LocalFrame::LocalFrame(double lat0_deg, double lon0_deg, double h0_m) noexcept
-    : origin_{}, r_{} {
+LocalFrame::LocalFrame(double lat0_deg, double lon0_deg, double h0_m) noexcept {
   GeodeticToEcef(lat0_deg, lon0_deg, h0_m, origin_);
   const double sl = std::sin(lat0_deg * kDeg);
   const double cl = std::cos(lat0_deg * kDeg);

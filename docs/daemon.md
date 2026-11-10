@@ -12,7 +12,7 @@ else on the machine:
 
 It is built on the same library as the `lgrtk` tool, so it gets the same state machine: baud
 detection, configuration by read-back, recovery from unplugging and receiver resets, stale-data
-detection. One process owns the serial port (decision D6): while `lgrtkd` runs, use `lgrtk ctl`
+detection. One process owns the serial port ([D6](decisions.md)): while `lgrtkd` runs, use `lgrtk ctl`
 instead of `lgrtk --port …`.
 
 ```text
@@ -28,11 +28,9 @@ The receiver and NTRIP threads only hand work to one event-loop thread, which se
 without blocking. A client that stops reading is disconnected when its 256 KiB buffer fills; it
 never slows the receiver or the other clients.
 
-**Bench (2026-11-10, Waveshare board, firmware A06S, indoors, `apply_config = false`):** lgrtkd
-identified the receiver at 460800 baud, served TPV and SKY at 10 Hz to a gpsd client (mode 1
-indoors, no fix), `lgrtk ctl status` reported `streaming` with 0 bad sentences, the raw tap carried
-the receiver bytes, and SIGTERM stopped it in about 0.2 s. The systemd unit, chrony and RTK
-through the daemon are not yet tested on hardware.
+Tested on the Waveshare board (firmware A06S): identification at 460800 baud, TPV and SKY at
+10 Hz to gpsd clients, `lgrtk ctl status`, the raw tap, and shutdown on SIGTERM in about 0.2 s.
+Not yet tested on hardware: the systemd unit, chrony, and RTK through the daemon.
 
 ## Install
 
@@ -197,15 +195,13 @@ daemon and use `lgrtk reset factory --yes`.
 
 ## Recording a session
 
-`tools/record-session.sh NAME [MOUNT USER [HOST]]` runs lgrtkd read-only (with NTRIP when a
-mountpoint is given, password in `~/.ntrip-pw`) and records until Ctrl-C into
-`~/data/bench/<date>-NAME/`: `raw.bin` (every receiver byte, replayable), `gpsd.jsonl` (every
-report with arrival time), `status.log` (`lgrtk ctl status` every 10 s), `lgrtkd.log` and your
-`notes.txt`. It prints one status line every 10 s (fix type, epx/epv, correction age) and finds
-the board by its USB id, whatever `ttyACM` number it gets.
-
-**Recordings contain your position.** Keep them out of git and out of issues; publish only
-derived numbers (rates, errors, satellite counts), or captures without a fix.
+`tools/record-session.sh NAME [HOST MOUNT USER]` runs lgrtkd read-only (with NTRIP when a
+mountpoint is given; password file in `$LGRTK_NTRIP_PASSWORD_FILE`) and records until Ctrl-C into
+`$LGRTK_DATA/<date>-NAME/` (default `~/.local/share/lgrtk/recordings`): `raw.bin` (every receiver
+byte, replayable), `gpsd.jsonl` (every report with its arrival time), `status.log`
+(`lgrtk ctl status` every 10 s), `lgrtkd.log` and a `notes.txt` for your own notes. It prints one
+status line every 10 s (fix type, epx/epv, correction age) and finds the board by its USB id,
+whatever `ttyACM` number it gets.
 
 ## Troubleshooting
 

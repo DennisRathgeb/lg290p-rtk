@@ -6,17 +6,13 @@
 namespace lgrtk::daemon {
 
 RawTap::RawTap(EventLoop* loop, size_t cap_bytes)
-    : clients_(loop, ClientSet::Handlers{}, cap_bytes,
-               /*read_lines=*/false) {}
+    : clients_(
+          loop, ClientSet::Handlers{},
+          ClientSet::Options{.cap_bytes = cap_bytes, .read_lines = false}) {}
 
 bool RawTap::Listen(const std::string& host, int port, std::string* err) {
-  const int fd = ListenTcp(host, port, err);
-  if (fd < 0) {
-    return false;
-  }
-  port_ = BoundPort(fd);
-  clients_.AddListener(fd);
-  return true;
+  port_ = clients_.AddTcpListener(host, port, err);
+  return port_ != 0;
 }
 
 void RawTap::Publish(std::span<const uint8_t> bytes) {

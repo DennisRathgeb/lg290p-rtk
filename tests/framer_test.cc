@@ -1,10 +1,10 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/framer.h"
 
-#include <gtest/gtest.h>
-
 #include <string>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "test_util.h"
 

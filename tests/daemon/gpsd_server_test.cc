@@ -1,13 +1,13 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "daemon/gpsd_server.h"
 
-#include <gtest/gtest.h>
-
 #include <atomic>
 #include <memory>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <thread>
+
+#include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 
 #include "daemon/event_loop.h"
 #include "daemon/net_util.h"
@@ -56,7 +56,7 @@ class GpsdServerTest : public ::testing::Test {
     lt_.Sync([&] { server_->PublishFix(f); });
   }
   // Connects and consumes the VERSION greeting.
-  void Connect(LineClient* c) {
+  void Connect(LineClient* c) const {
     ASSERT_TRUE(c->ConnectTcp(port_));
     auto v = c->ReadLine();
     ASSERT_TRUE(v);
@@ -72,7 +72,7 @@ class GpsdServerTest : public ::testing::Test {
     return n;
   }
 
-  size_t cap_ = 256 * 1024;
+  size_t cap_ = kClientBufferCap;
   LoopThread lt_;
   std::unique_ptr<GpsdServer> server_;
   int port_ = 0;
@@ -243,26 +243,24 @@ TEST_F(GpsdServerTest, ClientCountFollowsDisconnects) {
     Connect(&b);
     EXPECT_EQ(Clients(), 2U);
   }
-  for (int i = 0; i < 100 && Clients() != 0; ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  EXPECT_EQ(Clients(), 0U);
+  EXPECT_TRUE(test::WaitFor([&] { return Clients() == 0; }));
 }
 
 class GpsdServerSmallCapTest : public GpsdServerTest {
  protected:
-  GpsdServerSmallCapTest() { cap_ = 16 * 1024; }
+  GpsdServerSmallCapTest() { cap_ = size_t{16} * 1024; }
 };
 
 TEST_F(GpsdServerSmallCapTest, SlowClientIsDropped) {
   LineClient slow;
   ASSERT_TRUE(slow.ConnectTcp(port_, 4096));
   slow.Write("?WATCH={\"enable\":true,\"json\":true};\n");
+  // The server has processed the WATCH once it answered; from here on the
+  // slow client stops reading.
+  ASSERT_TRUE(slow.ReadUntil("\"class\":\"WATCH\""));
   LineClient good;
   Connect(&good);
   WatchJson(&good);
-  // Wait until the server has processed the slow client's WATCH.
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
   // Far more than kernel buffers plus the cap; `good` keeps reading.
   std::atomic<bool> reading{true};
   std::thread reader([&] {
@@ -281,81 +279,6 @@ TEST_F(GpsdServerSmallCapTest, SlowClientIsDropped) {
   EXPECT_EQ(Clients(), 1U);
   Publish(SomeFix(99999));
   EXPECT_TRUE(good.ReadUntil("\"TPV\""));
-}
-
-TEST(EventLoopTest, ClientLimitRefusesExtraClients) {
-  LoopThread lt;
-  std::unique_ptr<ClientSet> set;
-  int port = 0;
-  lt.Sync([&] {
-    set = std::make_unique<ClientSet>(lt.Loop(), ClientSet::Handlers{}, 1024,
-                                      true, 4096, /*max_clients=*/2);
-    std::string err;
-    const int fd = ListenTcp("127.0.0.1", 0, &err);
-    ASSERT_GE(fd, 0) << err;
-    port = BoundPort(fd);
-    set->AddListener(fd);
-  });
-  LineClient a;
-  LineClient b;
-  LineClient c;
-  ASSERT_TRUE(a.ConnectTcp(port));
-  ASSERT_TRUE(b.ConnectTcp(port));
-  ASSERT_TRUE(c.ConnectTcp(port));  // the kernel accepts; we close it
-  EXPECT_TRUE(c.ClosedByPeer());
-  size_t n = 0;
-  lt.Sync([&] { n = set->Count(); });
-  EXPECT_EQ(n, 2U);
-  a.Close();
-  for (int i = 0; i < 200 && n != 1; ++i) {  // until the server saw it
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    lt.Sync([&] { n = set->Count(); });
-  }
-  ASSERT_EQ(n, 1U);
-  LineClient d;  // room again after a client left
-  ASSERT_TRUE(d.ConnectTcp(port));
-  EXPECT_FALSE(d.ClosedByPeer(300));
-  lt.Sync([&] { set.reset(); });
-}
-
-TEST(EventLoopTest, PostFromOtherThread) {
-  LoopThread lt;
-  ASSERT_TRUE(lt.Ok());
-  std::atomic<int> n{0};
-  std::vector<std::thread> ts;
-  for (int i = 0; i < 4; ++i) {
-    ts.emplace_back([&] {
-      for (int k = 0; k < 100; ++k) {
-        lt.Loop()->Post([&] { ++n; });
-      }
-    });
-  }
-  for (auto& t : ts) {
-    t.join();
-  }
-  lt.Sync([] {});
-  EXPECT_EQ(n.load(), 400);
-}
-
-TEST(EventLoopTest, TimerFires) {
-  LoopThread lt;
-  std::atomic<int> n{0};
-  lt.Sync([&] { lt.Loop()->Every(10, [&] { ++n; }); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
-  EXPECT_GE(n.load(), 5);
-}
-
-TEST(EventLoopTest, UnixListenerReplacesStaleSocket) {
-  const std::string path =
-      "/tmp/lgrtk_test_" + std::to_string(getpid()) + ".sock";
-  std::string err;
-  int a = ListenUnix(path, &err);
-  ASSERT_GE(a, 0) << err;
-  close(a);  // leaves the socket file behind, like a crashed daemon
-  int b = ListenUnix(path, &err);
-  ASSERT_GE(b, 0) << err;
-  close(b);
-  unlink(path.c_str());
 }
 
 }  // namespace

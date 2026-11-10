@@ -1,12 +1,12 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 #include "lgrtk/serial.h"
 
-#include <gtest/gtest.h>
-
 #include <array>
 #include <chrono>
 #include <string>
 #include <thread>
+
+#include <gtest/gtest.h>
 
 #include "sim/sim_lg290p.h"
 

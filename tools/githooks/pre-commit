@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Fast checks on staged files only: clang-format and include guards on C++, bash -n on shell.
-set -e
-cxx=$(git diff --cached --name-only --diff-filter=ACM -- '*.h' '*.cc' || true)
-sh=$(git diff --cached --name-only --diff-filter=ACM -- '*.sh' 'tools/githooks/*' || true)
-if [ -n "$cxx" ] && command -v clang-format >/dev/null; then
-  # shellcheck disable=SC2086
-  clang-format --dry-run --Werror $cxx
+set -euo pipefail
+# NUL-separated names of staged (added, copied, modified) files matching the patterns.
+staged() { git diff --cached --name-only --diff-filter=ACM -z -- "$@"; }
+if command -v clang-format >/dev/null; then
+  staged '*.h' '*.cc' | xargs -0 -r clang-format --dry-run --Werror
 fi
-if [ -n "$cxx" ]; then python3 tools/check-header-guards.py; fi
-for f in $sh; do bash -n "$f"; done
+if [ -n "$(staged '*.h' '*.cc' | tr -d '\0')" ]; then
+  python3 tools/check-header-guards.py
+fi
+staged '*.sh' 'tools/githooks/*' | xargs -0 -r -n 1 bash -n
