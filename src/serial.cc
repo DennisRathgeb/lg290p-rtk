@@ -11,6 +11,8 @@
 #include <cstring>
 #include <utility>
 
+#include "internal/unique_fd.h"
+
 namespace lgrtk {
 
 namespace {
@@ -61,9 +63,10 @@ std::optional<SerialPort> SerialPort::Open(const std::string& path, int baud,
     err = "unsupported baud " + std::to_string(baud);
     return std::nullopt;
   }
-  const int fd =
-      ::open(path.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
-  if (fd < 0) {
+  // Owned here until every check passed; closed on each early return.
+  internal::UniqueFd fd(
+      ::open(path.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC));
+  if (!fd) {
     const int e = errno;
     err = path + ": " + std::strerror(e);
     if (e == EBUSY) {
@@ -74,18 +77,16 @@ std::optional<SerialPort> SerialPort::Open(const std::string& path, int baud,
     }
     return std::nullopt;
   }
-  if (!isatty(fd)) {
-    ::close(fd);
+  if (isatty(fd.Get()) == 0) {
     err = path + ": not a tty";
     return std::nullopt;
   }
-  if (::ioctl(fd, TIOCEXCL) != 0 || !Configure(fd, baud)) {
+  if (::ioctl(fd.Get(), TIOCEXCL) != 0 || !Configure(fd.Get(), baud)) {
     err = path + ": " + std::strerror(errno);
-    ::close(fd);
     return std::nullopt;
   }
-  tcflush(fd, TCIOFLUSH);
-  return SerialPort(fd, baud);
+  tcflush(fd.Get(), TCIOFLUSH);
+  return SerialPort(fd.Release(), baud);
 }
 
 SerialPort::SerialPort(SerialPort&& o) noexcept
