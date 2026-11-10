@@ -134,6 +134,38 @@ TEST(FramerTest, OversizeLineDroppedAndCounted) {
   EXPECT_EQ(c.nmea[0], gga);
 }
 
+TEST(FramerTest, TruncatedSentenceDoesNotEatTheNextOne) {
+  StreamFramer fr;
+  Collected c;
+  const std::string rmc = Nmea("GNRMC,1,A,,,,,,,101126,,,A,V");
+  FeedAll(fr, Bytes("$GNGGA,1234" + rmc + "\r\n"), c);
+  ASSERT_EQ(c.nmea.size(), 1u);
+  EXPECT_EQ(c.nmea[0], rmc);
+}
+
+TEST(FramerTest, DollarRunBeforeValidSentence) {
+  StreamFramer fr;
+  Collected c;
+  const std::string gga = Nmea("GNGGA,1,,,,,0,00,,,M,,M,,");
+  FeedAll(fr, Bytes("$abc$def" + gga + "\r\n"), c);
+  ASSERT_EQ(c.nmea.size(), 1u);
+  EXPECT_EQ(c.nmea[0], gga);
+}
+
+TEST(FramerTest, OversizeRunBeforeRtcmAndNmea) {
+  StreamFramer fr;
+  Collected c;
+  std::vector<uint8_t> data = Bytes("$" + std::string(400, 'a'));
+  const auto rtcm = Rtcm1005();
+  data.insert(data.end(), rtcm.begin(), rtcm.end());
+  const auto gga = Bytes(Nmea("GNGGA,1,,,,,0,00,,,M,,M,,") + "\r\n");
+  data.insert(data.end(), gga.begin(), gga.end());
+  FeedAll(fr, data, c);
+  EXPECT_EQ(fr.Stats().oversize, 1u);
+  EXPECT_EQ(c.rtcm.size(), 1u);
+  EXPECT_EQ(c.nmea.size(), 1u);
+}
+
 TEST(FramerTest, NmeaChecksumOkHelper) {
   EXPECT_TRUE(NmeaChecksumOk("$PQTMVERNO*58"));
   EXPECT_FALSE(NmeaChecksumOk("$PQTMVERNO*59"));

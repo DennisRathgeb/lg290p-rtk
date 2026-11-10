@@ -139,10 +139,23 @@ std::optional<Fix> Lg290pReceiver::LatestFix() const {
   return latest_;
 }
 
+FixSnapshot Lg290pReceiver::Snapshot() const {
+  std::lock_guard lk(mu_);
+  FixSnapshot s;
+  s.fix = latest_;
+  s.age_ns = latest_ ? NowNs() - latest_->t_arrival_ns : -1;
+  s.state = status_.state;
+  return s;
+}
+
 std::future<std::optional<nmea::OwnedReply>> Lg290pReceiver::Send(
     lg290p::Command cmd) {
-  Pending p{std::move(cmd), {}};
+  Pending p{std::move(cmd), {}, 0};
   auto fut = p.promise.get_future();
+  if (!running_) {
+    p.promise.set_value(std::nullopt);  // nobody would ever execute it
+    return fut;
+  }
   std::lock_guard lk(mu_);
   queue_.push_back(std::move(p));
   return fut;
@@ -361,7 +374,9 @@ void Lg290pReceiver::OnFrame(const Frame& f, int64_t t_arrival) {
       if (awaiting_ != nullptr && lg290p::Matches(*awaiting_, *reply)) {
         *awaiting_reply_ = nmea::Own(*reply);
         awaiting_ = nullptr;
-      } else if (in_flight_ && lg290p::Matches(in_flight_->cmd, *reply)) {
+      } else if (in_flight_ &&
+                 in_flight_->written >= in_flight_->cmd.text.size() &&
+                 lg290p::Matches(in_flight_->cmd, *reply)) {
         in_flight_->promise.set_value(nmea::Own(*reply));
         in_flight_.reset();
       }
@@ -380,6 +395,25 @@ void Lg290pReceiver::OnFrame(const Frame& f, int64_t t_arrival) {
   }
   last_utc_ = fix.utc_s;
   last_fix_t_ = fix.t_arrival_ns;
+  if (prev_fix_arrival_ > 0 && opt_.stale_after_ms <= 0) {
+    const double gap_ms =
+        static_cast<double>(fix.t_arrival_ns - prev_fix_arrival_) / 1e6;
+    if (gap_ms > 0.0 && gap_ms < 5000.0) {
+      interval_ms_ =
+          interval_ms_ > 0.0 ? 0.8 * interval_ms_ + 0.2 * gap_ms : gap_ms;
+    }
+  }
+  prev_fix_arrival_ = fix.t_arrival_ns;
+  // "Corrected" means corrected by *our* RTCM: without recent injection the
+  // receiver's differential solution comes from elsewhere (SBAS, PPP), whose
+  // frame is not the declared correction frame.
+  if (fix.frame == FixFrame::kCorrected) {
+    const int64_t allowed =
+        static_cast<int64_t>((static_cast<double>(fix.diff_age_s) + 5.0) * 1e9);
+    if (last_inject_ns_ == 0 || fix.t_arrival_ns - last_inject_ns_ > allowed) {
+      fix.frame = FixFrame::kAutonomous;
+    }
+  }
   State current;
   {
     std::lock_guard lk(mu_);
@@ -485,14 +519,29 @@ bool Lg290pReceiver::Configure() {
     lg290p::ReceiverConfig have;
     for (const auto& cmd : lg290p::ReadCommands(opt_.config)) {
       std::optional<nmea::OwnedReply> reply;
-      if (!Execute(cmd, reply)) {
-        return false;
+      for (int attempt = 0; attempt <= opt_.command_retries && !reply;
+           ++attempt) {
+        if (!Execute(cmd, reply)) {
+          return false;
+        }
       }
       if (reply && reply->ok) {
         lg290p::ApplyReadReply(*reply, have);
       }
     }
-    const auto plan = lg290p::PlanConfig(opt_.config, have);
+    if (have.fix_interval_ms) {
+      interval_ms_ = *have.fix_interval_ms;  // until epochs measure it
+    }
+    std::vector<std::string> unknown;
+    const auto plan = lg290p::PlanConfig(opt_.config, have, &unknown);
+    if (!unknown.empty()) {
+      std::string names;
+      for (const auto& u : unknown) {
+        names += (names.empty() ? "" : ", ") + u;
+      }
+      std::lock_guard lk(mu_);
+      status_.last_error = "could not read " + names + "; left unchanged";
+    }
     if (plan.empty()) {
       return true;
     }
@@ -577,48 +626,51 @@ void Lg290pReceiver::DrainInject() {
   }
   ring_tail_.store(tail, std::memory_order_release);
   if (sent > 0) {
+    last_inject_ns_ = NowNs();
     std::lock_guard lk(mu_);
     status_.rtcm_injected += sent;
   }
 }
 
-void Lg290pReceiver::ServeQueue() {
-  if (in_flight_) {
-    if (NowNs() > in_flight_deadline_) {
-      in_flight_->promise.set_value(std::nullopt);
-      in_flight_.reset();
-    }
+void Lg290pReceiver::WriteInFlight() {
+  // One non-blocking write per loop iteration: a device that stops reading
+  // must not stall the I/O thread (fixes, stale detection, Stop()).
+  const std::string& text = in_flight_->cmd.text;
+  if (!port_ || in_flight_->written >= text.size()) {
     return;
   }
-  if (ring_tail_.load() != ring_head_.load()) {
-    return;  // never split an RTCM frame
+  const auto* p = reinterpret_cast<const uint8_t*>(text.data());
+  size_t w = 0;
+  if (!port_->WriteSome(
+          std::span(p + in_flight_->written, text.size() - in_flight_->written),
+          w)) {
+    port_.reset();
+    return;
   }
-  std::optional<Pending> next;
-  {
+  in_flight_->written += w;
+}
+
+void Lg290pReceiver::ServeQueue() {
+  if (!in_flight_) {
+    if (ring_tail_.load() != ring_head_.load()) {
+      return;  // never split an RTCM frame
+    }
     std::lock_guard lk(mu_);
     if (queue_.empty()) {
       return;
     }
-    next.emplace(std::move(queue_.front()));
+    in_flight_.emplace(std::move(queue_.front()));
     queue_.pop_front();
+    in_flight_deadline_ =
+        NowNs() + int64_t{opt_.command_timeout_ms} * 1'000'000;
   }
-  const auto* p = reinterpret_cast<const uint8_t*>(next->cmd.text.data());
-  size_t done = 0;
-  while (done < next->cmd.text.size() && port_) {
-    size_t w = 0;
-    if (!port_->WriteSome(std::span(p + done, next->cmd.text.size() - done),
-                          w)) {
-      port_.reset();
-      break;
-    }
-    done += w;
+  WriteInFlight();
+  const bool sent = in_flight_->written >= in_flight_->cmd.text.size();
+  if (!port_ || NowNs() > in_flight_deadline_ ||
+      (sent && in_flight_->cmd.reply_to.empty())) {
+    in_flight_->promise.set_value(std::nullopt);
+    in_flight_.reset();
   }
-  if (next->cmd.reply_to.empty() || !port_) {
-    next->promise.set_value(std::nullopt);
-    return;
-  }
-  in_flight_ = std::move(next);
-  in_flight_deadline_ = NowNs() + int64_t{opt_.command_timeout_ms} * 1'000'000;
 }
 
 void Lg290pReceiver::FailPendingQueue() {
@@ -636,6 +688,14 @@ void Lg290pReceiver::FailPendingQueue() {
   }
 }
 
+int64_t Lg290pReceiver::StaleAfterNs() const {
+  if (opt_.stale_after_ms > 0) {
+    return int64_t{opt_.stale_after_ms} * 1'000'000;
+  }
+  const double interval = interval_ms_ > 0.0 ? interval_ms_ : 1000.0;
+  return static_cast<int64_t>(std::max(500.0, 3.0 * interval) * 1e6);
+}
+
 void Lg290pReceiver::StreamOnce() {
   ServeQueue();
   DrainInject();
@@ -650,7 +710,7 @@ void Lg290pReceiver::StreamOnce() {
     return;
   }
   const int64_t now = NowNs();
-  if (now - last_fix_t_ > int64_t{opt_.stale_after_ms} * 1'000'000) {
+  if (now - last_fix_t_ > StaleAfterNs()) {
     State current;
     {
       std::lock_guard lk(mu_);
@@ -669,8 +729,9 @@ void Lg290pReceiver::StreamOnce() {
           on_fix_(fix);
         }
       }
-      SetState(State::kStale,
-               "no epoch for " + std::to_string(opt_.stale_after_ms) + " ms");
+      SetState(
+          State::kStale,
+          "no epoch for " + std::to_string(StaleAfterNs() / 1'000'000) + " ms");
     }
   }
 }

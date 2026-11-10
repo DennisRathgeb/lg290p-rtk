@@ -114,6 +114,19 @@ TEST(EpochTest, CorrectedFrameNeedsDiffAge) {
   EXPECT_EQ(r.fixes[1].frame, FixFrame::kAutonomous);
 }
 
+TEST(EpochTest, SbasDgnssIsAutonomous) {
+  // Quality 2 from SBAS (station id = SBAS PRN 120..158) is in the broadcast
+  // frame.
+  Feeder r;
+  r.Feed(
+      Nmea("GNGGA,100000.000,4637.80000000,N,00846.80000000,E,2,20,0.80,1950."
+           "000,M,49.100,M,1.0,0123"));
+  r.Feed(Gga("100000.100"));
+  ASSERT_EQ(r.fixes.size(), 1u);
+  EXPECT_EQ(r.fixes[0].type, FixType::kDgnss);
+  EXPECT_EQ(r.fixes[0].frame, FixFrame::kAutonomous);
+}
+
 TEST(EpochTest, EpeUsedWhenNoGst) {
   Feeder r;
   r.Feed(Gga("100000.000"));

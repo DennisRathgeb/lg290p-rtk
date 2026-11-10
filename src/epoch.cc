@@ -154,11 +154,16 @@ bool EpochAssembler::Feed(std::string_view line, int64_t t_arrival_ns,
     p.diff_age_s =
         gga->has_diff_age ? static_cast<float>(gga->diff_age_s) : 0.0f;
     p.station_id = gga->station_id;
+    // SBAS (DGNSS with an SBAS PRN 120..158 as station) is in the broadcast
+    // frame, not the frame of our corrections.
+    const bool sbas = p.type == FixType::kDgnss && gga->station_id >= 120 &&
+                      gga->station_id <= 158;
     const bool differential = p.type == FixType::kDgnss ||
                               p.type == FixType::kRtkFixed ||
                               p.type == FixType::kRtkFloat;
-    p.frame = differential && gga->has_diff_age ? FixFrame::kCorrected
-                                                : FixFrame::kAutonomous;
+    p.frame = differential && gga->has_diff_age && !sbas
+                  ? FixFrame::kCorrected
+                  : FixFrame::kAutonomous;
   } else if (rmc) {
     if (rmc->date_ymd != 0) {
       p.date_ymd = last_date_ = rmc->date_ymd;

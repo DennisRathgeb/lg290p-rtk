@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "lgrtk/nmea.h"
+#include "test_util.h"
 
 namespace lgrtk::lg290p {
 namespace {
@@ -147,13 +148,28 @@ TEST(Lg290pTest, PlanConfigAddsSaveAndResetOnlyWhenNeeded) {
   EXPECT_EQ(plan[3].text, SoftwareReset().text);
 }
 
-TEST(Lg290pTest, PlanConfigWritesUnknownCurrentValues) {
+TEST(Lg290pTest, PlanConfigSkipsUnknownCurrentValues) {
   ReceiverConfig want;
   want.elevation_mask_deg = 10.0;
-  ReceiverConfig have;  // read-back failed: value unknown
-  const auto plan = PlanConfig(want, have);
-  ASSERT_EQ(plan.size(), 2u);
-  EXPECT_EQ(plan[0].text, SetElevationMask(10.0)->text);
+  want.message_rates.push_back({"GST", 1, 0});
+  ReceiverConfig have;  // read-back failed: values unknown
+  std::vector<std::string> unknown;
+  EXPECT_TRUE(PlanConfig(want, have, &unknown)
+                  .empty());  // no blind writes, no NVM wear
+  ASSERT_EQ(unknown.size(), 2u);
+}
+
+TEST(Lg290pTest, RtkReplyWithoutTimeout) {
+  ReceiverConfig have;
+  std::array<std::string_view, nmea::kMaxFields> f{};
+  ApplyReadReply(
+      nmea::Own(*nmea::ParseReply(test::Nmea("PQTMCFGRTK,OK,1,1"), f)), have);
+  ASSERT_TRUE(have.rtk);
+  EXPECT_EQ(have.rtk->timeout_s, 0);  // unknown
+  ReceiverConfig want;
+  want.rtk = RtkSettings{1, 1, 30};
+  EXPECT_TRUE(PlanConfig(want, have)
+                  .empty());  // modes equal, timeout unknown: leave it
 }
 
 }  // namespace

@@ -208,6 +208,21 @@ TEST(NtripTest, PasswordNotInStatusOrErrors) {
   EXPECT_NE(c.Status().last_error.find("401"), std::string::npos);
 }
 
+TEST(NtripTest, StopIsFastWhileConnecting) {
+  VecSink sink;
+  NtripOptions o;
+  o.host = "192.0.2.1";  // TEST-NET-1: never answers
+  o.mountpoint = "X";
+  o.send_gga = false;
+  o.connect_timeout_ms = 5000;
+  NtripClient c(o, sink);
+  ASSERT_TRUE(c.Start());
+  std::this_thread::sleep_for(200ms);
+  const auto t0 = std::chrono::steady_clock::now();
+  c.Stop();
+  EXPECT_LT(std::chrono::steady_clock::now() - t0, 1200ms);
+}
+
 TEST(NtripTest, BuildGgaFormat) {
   const std::string g = BuildGga(SomeFix());
   EXPECT_EQ(g.rfind("$GPGGA,100000.00,4637.8000000,N,00846.8000000,E,1,20,0.8,"

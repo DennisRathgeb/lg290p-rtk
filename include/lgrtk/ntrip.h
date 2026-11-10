@@ -87,7 +87,8 @@ class NtripClient {
   }
   /// Starts the thread; false if already running.
   bool Start();
-  /// Stops and joins within ~1 s. Idempotent.
+  /// Stops and joins within ~1 s (a DNS lookup in progress can take longer;
+  /// use an IP address where that matters). Idempotent.
   void Stop();
   /// State, counters and the age of the last correction data.
   [[nodiscard]] NtripStatus Status() const;

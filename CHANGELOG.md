@@ -17,4 +17,11 @@ First release: library, CLI, NTRIP, projection.
 - `NtripClient`: NTRIP v1/v2, chunked transfer, GGA upload, backoff, stall detection, stops on 401.
 - `Projection` (PROJ, refuses ballpark transformations and names missing grids) and `LocalFrame`.
 - `lgrtk` CLI: probe, watch, status, config, reset, base, ntrip, project.
+- `FixProjector` (projection chosen by the fix's frame; undeclared frames refused) and
+  `Lg290pReceiver::Snapshot()` (fix, age and state under one lock).
+- Review fixes before release: the framer resynchronises at a `$` inside a truncated sentence
+  and after over-long lines; settings that cannot be read back are left unchanged (no blind
+  writes, no flash wear); SBAS fixes and differential fixes without our RTCM are tagged
+  autonomous; the stale threshold follows the epoch rate; command writes never block the I/O
+  thread; `NtripClient::Stop()` is fast while connecting; `Send()` before `Start()` resolves.
 - CMake package (`find_package(lgrtk)`), pkg-config file, examples, Doxygen docs.

@@ -36,6 +36,15 @@ class SimLg290p {
   /// When a client opens the port, first send an old epoch, as the CH343
   /// bridge does with bytes left in its FIFO from the previous session.
   void SetBurstOnOpen(bool on) { burst_on_open_ = on; }
+  /// Stops reading from the host (the tty output buffer then fills up).
+  void SetReading(bool on) { reading_ = on; }
+  /// Fix interval in ms (as if PQTMCFGFIXRATE had been set and saved).
+  void SetFixInterval(int ms);
+  /// Commands that are silently ignored (no reply at all).
+  void Mute(const std::string& command);
+  /// Write commands (",W,") of this name answered with ERROR,1; reads still
+  /// work.
+  void NakWrites(const std::string& command);
   /// Commands (e.g. "PQTMCFGMSGRATE") answered with ERROR,1.
   void Nak(const std::string& command);
   /// Every W command received, as the body without checksum.
@@ -59,12 +68,15 @@ class SimLg290p {
   std::atomic<bool> stop_{false}, silent_{false}, plugged_{false};
   std::atomic<int> quality_{1};
   std::atomic<bool> burst_on_open_{false};
+  std::atomic<bool> reading_{true};
   bool client_open_ = false;
   std::atomic<int> resets_{0};
   std::atomic<int64_t> silent_until_ns_{0};
   mutable std::mutex mu_;  // guards everything below and master_ swaps
   std::map<std::string, std::string> settings_;
   std::set<std::string> nak_;
+  std::set<std::string> mute_;
+  std::set<std::string> nak_writes_;
   std::vector<std::string> writes_;
   std::vector<uint8_t> rtcm_;
   std::thread thread_;

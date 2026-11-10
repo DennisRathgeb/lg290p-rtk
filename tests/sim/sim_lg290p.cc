@@ -118,6 +118,21 @@ void SimLg290p::ClosePty() {
 void SimLg290p::Unplug() { ClosePty(); }
 void SimLg290p::Replug() { OpenPty(); }
 
+void SimLg290p::SetFixInterval(int ms) {
+  std::lock_guard lk(mu_);
+  settings_["PQTMCFGFIXRATE"] = std::to_string(ms);
+}
+
+void SimLg290p::NakWrites(const std::string& command) {
+  std::lock_guard lk(mu_);
+  nak_writes_.insert(command);
+}
+
+void SimLg290p::Mute(const std::string& command) {
+  std::lock_guard lk(mu_);
+  mute_.insert(command);
+}
+
 void SimLg290p::Nak(const std::string& command) {
   std::lock_guard lk(mu_);
   nak_.insert(command);
@@ -168,6 +183,13 @@ void SimLg290p::HandleCommand(const std::string& body) {
   const std::string cmd = body.substr(0, comma);
   const std::string rest =
       comma == std::string::npos ? "" : body.substr(comma + 1);
+  if (mute_.count(cmd)) {
+    return;
+  }
+  if (nak_writes_.count(cmd) && rest.starts_with("W,")) {
+    Send(Line(cmd + ",ERROR,1"));
+    return;
+  }
   if (nak_.count(cmd)) {
     Send(Line(cmd + ",ERROR,1"));
     return;
@@ -253,7 +275,7 @@ void SimLg290p::Loop() {
         }
       }
     }
-    const ssize_t n = read(master_, buf.data(), buf.size());
+    const ssize_t n = reading_ ? read(master_, buf.data(), buf.size()) : 0;
     const bool booting = NowNs() < silent_until_ns_;
     if (n > 0 && !booting && HostBaudMatches()) {
       framer.Feed(std::span(buf.data(), static_cast<size_t>(n)),

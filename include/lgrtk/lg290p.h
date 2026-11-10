@@ -173,11 +173,14 @@ struct ReceiverConfig {
 [[nodiscard]] std::vector<Command> ReadCommands(const ReceiverConfig& want);
 /// Stores the values of a Get reply in `have`; ignores other replies.
 void ApplyReadReply(const nmea::OwnedReply& reply, ReceiverConfig& have);
-/// Writes needed to get from `have` to `want` (unknown current values are
-/// written), followed by SaveParams when anything changed and SoftwareReset
-/// when a changed setting needs one. Empty when nothing differs.
-[[nodiscard]] std::vector<Command> PlanConfig(const ReceiverConfig& want,
-                                              const ReceiverConfig& have);
+/// Writes needed to get from `have` to `want`. Settings whose current value
+/// is unknown (read-back failed) are not written; their names go to
+/// `unknown`. The writes are followed by SaveParams when anything changed and
+/// by SoftwareReset when a changed setting needs one. Empty when nothing
+/// differs.
+[[nodiscard]] std::vector<Command> PlanConfig(
+    const ReceiverConfig& want, const ReceiverConfig& have,
+    std::vector<std::string>* unknown = nullptr);
 
 }  // namespace lgrtk::lg290p
 

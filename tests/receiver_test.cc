@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -146,6 +147,20 @@ TEST(ReceiverTest, DetectsBaud) {
   EXPECT_EQ(rx.Status().baud, 115200);
 }
 
+TEST(ReceiverTest, RefusedReadIsReportedNotWritten) {
+  test::SimLg290p sim;
+  sim.Nak("PQTMCFGMSGRATE");  // e.g. a message this firmware does not know
+  Observer obs;
+  Lg290pReceiver rx(Opts(sim));
+  obs.Attach(rx);
+  ASSERT_TRUE(rx.Start());
+  ASSERT_TRUE(obs.WaitState(rx, State::kStreaming, 8s));
+  for (const auto& w : sim.Writes()) {
+    EXPECT_EQ(w.find("PQTMCFGMSGRATE"), std::string::npos) << w;
+  }
+  EXPECT_NE(rx.Status().last_error.find("PQTMCFGMSGRATE"), std::string::npos);
+}
+
 TEST(ReceiverTest, StaleWhenSilentThenRecovers) {
   test::SimLg290p sim;
   Observer obs;
@@ -181,7 +196,7 @@ TEST(ReceiverTest, UnplugReplugRecovers) {
 
 TEST(ReceiverTest, NakLeadsToFault) {
   test::SimLg290p sim;
-  sim.Nak("PQTMCFGMSGRATE");
+  sim.NakWrites("PQTMCFGMSGRATE");  // reads work, writes are refused
   Observer obs;
   Lg290pReceiver rx(Opts(sim));
   obs.Attach(rx);
@@ -267,6 +282,100 @@ TEST(ReceiverTest, StaleBytesAtOpenAreDiscarded) {
   for (const Fix& f : obs.fixes) {
     EXPECT_GE(f.utc_s, 36000.0) << "old epoch published as fresh";
   }
+}
+
+TEST(ReceiverTest, SendBeforeStartResolvesAtOnce) {
+  ReceiverOptions o;
+  o.port = "/dev/does-not-exist-lgrtk";
+  Lg290pReceiver rx(o);
+  auto fut = rx.Send(lg290p::GetFixRate());
+  ASSERT_EQ(fut.wait_for(100ms), std::future_status::ready);
+  EXPECT_FALSE(fut.get());
+}
+
+TEST(ReceiverTest, StopJoinsWhenDeviceStopsReading) {
+  test::SimLg290p sim;
+  Observer obs;
+  Lg290pReceiver rx(Opts(sim));
+  obs.Attach(rx);
+  ASSERT_TRUE(rx.Start());
+  ASSERT_TRUE(obs.WaitState(rx, State::kStreaming, 5s));
+  sim.SetReading(false);  // the tty output buffer fills up
+  std::vector<std::future<std::optional<nmea::OwnedReply>>> futs;
+  for (int i = 0; i < 20000; ++i) {
+    futs.push_back(rx.Send(lg290p::Restart(lg290p::Start::kHot)));
+  }
+  std::this_thread::sleep_for(300ms);
+  EXPECT_LT(rx.Status().last_fix_age_ns, 300'000'000);  // still reading fixes
+  auto stopped = std::async(std::launch::async, [&] { rx.Stop(); });
+  ASSERT_EQ(stopped.wait_for(1500ms), std::future_status::ready);
+}
+
+TEST(ReceiverTest, OneHertzIsNotStale) {
+  test::SimLg290p sim;
+  sim.SetFixInterval(1000);
+  Observer obs;
+  auto o = Opts(sim);
+  o.apply_config = false;
+  o.stale_after_ms = 0;  // automatic: from the epoch rate
+  Lg290pReceiver rx(o);
+  obs.Attach(rx);
+  ASSERT_TRUE(rx.Start());
+  ASSERT_TRUE(obs.WaitState(rx, State::kStreaming, 5s));
+  std::this_thread::sleep_for(3500ms);
+  std::lock_guard lk(obs.mu);
+  for (const auto& e : obs.events) {
+    EXPECT_NE(e.to, State::kStale) << e.reason;
+  }
+}
+
+TEST(ReceiverTest, UnreadableSettingIsNotWritten) {
+  test::SimLg290p sim;
+  sim.Mute("PQTMCFGELETHD");  // reads of this setting never answer
+  Observer obs;
+  auto o = Opts(sim);
+  o.config = lg290p::ReceiverConfig{};
+  o.config.elevation_mask_deg = 10.0;
+  Lg290pReceiver rx(o);
+  obs.Attach(rx);
+  ASSERT_TRUE(rx.Start());
+  ASSERT_TRUE(obs.WaitState(rx, State::kStreaming, 8s));
+  EXPECT_TRUE(sim.Writes().empty());  // no blind write, no SAVEPAR
+  EXPECT_NE(rx.Status().last_error.find("PQTMCFGELETHD"), std::string::npos)
+      << rx.Status().last_error;
+}
+
+TEST(ReceiverTest, RtkWithoutInjectedCorrectionsIsAutonomous) {
+  test::SimLg290p sim;
+  sim.SetFixQuality(
+      4);  // e.g. PPP/HAS reported as RTK, or stale state: no RTCM from us
+  Observer obs;
+  Lg290pReceiver rx(Opts(sim));
+  obs.Attach(rx);
+  ASSERT_TRUE(rx.Start());
+  ASSERT_TRUE(obs.WaitFixes(3, 5s));
+  EXPECT_EQ(rx.LatestFix()->frame, FixFrame::kAutonomous);
+  const auto frame = test::Rtcm(std::vector<uint8_t>(30, 0x42));
+  ASSERT_TRUE(rx.Inject(frame));
+  const size_t n = obs.FixCount();
+  ASSERT_TRUE(obs.WaitFixes(n + 3, 2s));
+  EXPECT_EQ(rx.LatestFix()->frame, FixFrame::kCorrected);
+}
+
+TEST(ReceiverTest, SnapshotIsConsistent) {
+  test::SimLg290p sim;
+  Observer obs;
+  Lg290pReceiver rx(Opts(sim));
+  obs.Attach(rx);
+  EXPECT_FALSE(rx.Snapshot().fix);
+  ASSERT_TRUE(rx.Start());
+  ASSERT_TRUE(obs.WaitFixes(2, 5s));
+  sim.Unplug();
+  ASSERT_TRUE(obs.WaitState(rx, State::kReconnecting, 1s));
+  const FixSnapshot s = rx.Snapshot();
+  ASSERT_TRUE(s.fix);
+  EXPECT_EQ(s.state, State::kReconnecting);  // the fix is from before the loss
+  EXPECT_GT(s.age_ns, 0);
 }
 
 TEST(ReceiverTest, RawRecorderWritesStream) {

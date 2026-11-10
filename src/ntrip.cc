@@ -57,7 +57,7 @@ class Socket {
 };
 
 Socket Connect(const std::string& host, int port, int timeout_ms,
-               std::string& err) {
+               std::string& err, const std::atomic<bool>* stop = nullptr) {
   addrinfo hints{};
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
@@ -81,9 +81,24 @@ Socket Connect(const std::string& host, int port, int timeout_ms,
       err = host + ":" + service + ": " + std::strerror(errno);
       continue;
     }
+    // Wait in short slices so Stop() is not held up by an unreachable caster.
     pollfd p{s.Fd(), POLLOUT, 0};
-    if (::poll(&p, 1, timeout_ms) <= 0) {
-      err = host + ":" + service + ": connect timeout";
+    int waited = 0;
+    int ready = 0;
+    bool stopped = false;
+    while (waited < timeout_ms && ready == 0) {
+      if (stop != nullptr && stop->load()) {
+        stopped = true;
+        break;
+      }
+      ready = ::poll(&p, 1, 50);
+      waited += 50;
+    }
+    if (ready <= 0) {
+      err = stopped ? "stopped" : host + ":" + service + ": connect timeout";
+      if (stopped) {
+        break;
+      }
       continue;
     }
     int soerr = 0;
@@ -426,7 +441,8 @@ void NtripClient::Session() {
     status_.last_error = why;
   };
   std::string err;
-  Socket sock = Connect(opt_.host, opt_.port, opt_.connect_timeout_ms, err);
+  Socket sock =
+      Connect(opt_.host, opt_.port, opt_.connect_timeout_ms, err, &stop_);
   if (!sock.Ok()) {
     fail(err);
     return;

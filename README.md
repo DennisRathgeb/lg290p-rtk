@@ -78,14 +78,16 @@ lgrtk::Lg290pReceiver rx(opt);
 lgrtk::NtripClient ntrip({.host = "caster.example", .mountpoint = "MSM_GISGEO_LV95LHN95",
                           .user = "me", .password = pw}, rx);   // corrections into the receiver
 std::string err;
-auto lv95 = lgrtk::Projection::Create("EPSG:4937", "EPSG:2056+5729", err);  // built once
+// Declare the frame of each kind of fix; projecting picks the matching one.
+auto lv95 = lgrtk::FixProjector::Create({.corrected_crs = "EPSG:4937"},   // swipos: CHTRS95
+                                        "EPSG:2056+5729", err);          // LV95 + LHN95
 
 rx.OnStatus([](const lgrtk::StatusEvent& e) { /* streaming, stale, reconnecting, ... */ });
 rx.OnFix([&](const lgrtk::Fix& f) {
   ntrip.SetPosition(f);                                   // GGA for VRS mountpoints
   if (f.type != lgrtk::FixType::kRtkFixed) return;        // or weight by f.sigma_e/n/u_m
   double enh[3];
-  lv95->Forward(f.lat_deg, f.lon_deg, f.h_ell_m, enh);    // microseconds
+  lv95->Project(f, enh, err);                             // microseconds; refuses other frames
 });
 rx.Start();
 ntrip.Start();
@@ -121,7 +123,7 @@ path allocates.
 | `identifying` | `$PQTMVERNO`; tries 460800, 921600, 115200, 230400, 9600 | firmware answers |
 | `configuring` | reads every managed setting, writes differences, saves, resets only if needed | all acknowledged |
 | `streaming` | epochs arrive | silence (→ `stale`) or port lost |
-| `stale` | port open, no epoch for 500 ms | data resumes |
+| `stale` | port open, no epoch for three epoch periods (at least 500 ms) | data resumes |
 | `reconnecting` | port gone; backoff 250 ms → 5 s, immediately when the device reappears | port opens |
 | `fault` | the receiver refused a command; `Status().last_error` names it | `Stop()` |
 
@@ -132,8 +134,11 @@ ellipsoidal height and the receiver's geoid separation, **fix type** (none, sing
 RTK float, RTK fixed, …), **1-sigma east/north/up** from GST (or `$PQTMEPE`) with its source,
 horizontal velocity, HDOP/PDOP, satellites, **correction age** and station id, and a **frame tag**:
 `kAutonomous` (broadcast frame ≈ ITRF) or `kCorrected` (the frame of your corrections, e.g.
-CHTRS95 with swipos). The receiver cannot know that frame; you declare it, so a 0.8 m frame mix-up
-cannot happen silently.
+CHTRS95 with swipos). A fix only counts as corrected while *your* corrections reach the
+receiver (an SBAS or PPP solution is not in your corrections' frame). The receiver cannot know
+that frame; you declare it in `lgrtk::FixProjector`, so a 0.8 m frame mix-up cannot happen
+silently. `Lg290pReceiver::Snapshot()` returns the latest fix together with its age and the
+driver state, so a poller always knows whether the position is current.
 
 ## Command-line tool
 

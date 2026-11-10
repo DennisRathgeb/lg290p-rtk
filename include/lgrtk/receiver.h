@@ -80,11 +80,13 @@ struct ReceiverOptions {
   lg290p::ReceiverConfig config =
       lg290p::DefaultRoverConfig();  ///< desired settings
   bool apply_config = true;          ///< read back and apply `config`
-  int stale_after_ms = 500;          ///< no epoch for this long -> kStale
-  int backoff_min_ms = 250;          ///< first reconnect delay
-  int backoff_max_ms = 5000;         ///< reconnect delay cap
-  int command_timeout_ms = 1000;     ///< wait for a reply
-  int command_retries = 2;           ///< extra attempts before kFault
+  /// No epoch for this long -> kStale. 0 = automatic: three epoch periods
+  /// (read back or measured), at least 500 ms.
+  int stale_after_ms = 0;
+  int backoff_min_ms = 250;       ///< first reconnect delay
+  int backoff_max_ms = 5000;      ///< reconnect delay cap
+  int command_timeout_ms = 1000;  ///< wait for a reply
+  int command_retries = 2;        ///< extra attempts before kFault
 };
 
 /// Snapshot for status displays.
@@ -101,6 +103,14 @@ struct ReceiverStatus {
   StreamFramer::Counters framer;  ///< frame statistics
   int64_t last_fix_age_ns = -1;   ///< -1 before the first fix
   std::string last_error;         ///< most recent problem
+};
+
+/// The latest fix together with its age and the driver state, taken under
+/// one lock: a consistent answer to "how current is this position?".
+struct FixSnapshot {
+  std::optional<Fix> fix;  ///< newest fix, if any
+  int64_t age_ns = -1;  ///< now minus the fix's arrival time; -1 without a fix
+  State state = State::kDisconnected;  ///< driver state at the time of the call
 };
 
 /// Writes the raw receiver byte stream to a file (for post-processing:
@@ -164,6 +174,8 @@ class Lg290pReceiver final : public CorrectionSink {
   [[nodiscard]] ReceiverStatus Status() const;
   /// The newest fix, if any (check Status().last_fix_age_ns for freshness).
   [[nodiscard]] std::optional<Fix> LatestFix() const;
+  /// LatestFix(), its age and the state, consistently.
+  [[nodiscard]] FixSnapshot Snapshot() const;
   /// Queues a command; the future gets the reply (nullopt on timeout or when
   /// the command expects none). Executed while streaming.
   std::future<std::optional<nmea::OwnedReply>> Send(lg290p::Command cmd);
@@ -174,6 +186,7 @@ class Lg290pReceiver final : public CorrectionSink {
   struct Pending {
     lg290p::Command cmd;
     std::promise<std::optional<nmea::OwnedReply>> promise;
+    size_t written = 0;  // bytes of cmd.text already written
   };
 
   void Run();
@@ -182,6 +195,8 @@ class Lg290pReceiver final : public CorrectionSink {
   bool Identify();
   bool Configure();
   void StreamOnce();
+  int64_t StaleAfterNs() const;
+  void WriteInFlight();
   void BackoffWait();
   /// Reads once (up to `timeout_ms`) and processes everything that arrived.
   /// Returns false when the port failed.
@@ -216,6 +231,10 @@ class Lg290pReceiver final : public CorrectionSink {
   int backoff_ms_ = 0;
   bool had_connection_ = false;
   int64_t last_fix_t_ = 0;
+  int64_t prev_fix_arrival_ = 0;  // for the epoch-interval estimate
+  double interval_ms_ =
+      0.0;  // epoch interval: read back or measured; 0 unknown
+  int64_t last_inject_ns_ = 0;  // last time corrections reached the port
   double last_utc_ = -1.0;
   std::optional<Pending> in_flight_;
   int64_t in_flight_deadline_ = 0;

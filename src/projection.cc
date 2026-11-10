@@ -158,6 +158,51 @@ bool Projection::Inverse(const double in[3], double& lat_deg, double& lon_deg,
   return true;
 }
 
+std::optional<FixProjector> FixProjector::Create(const FixFrames& frames,
+                                                 std::string_view to_crs,
+                                                 std::string& err) {
+  if (frames.corrected_crs.empty() && frames.autonomous_crs.empty()) {
+    err = "no CRS declared for corrected or autonomous fixes";
+    return std::nullopt;
+  }
+  FixProjector p;
+  if (!frames.corrected_crs.empty()) {
+    p.corrected_ = Projection::Create(frames.corrected_crs, to_crs, err);
+    if (!p.corrected_) {
+      err = "corrected frame: " + err;
+      return std::nullopt;
+    }
+  }
+  if (!frames.autonomous_crs.empty()) {
+    p.autonomous_ = Projection::Create(frames.autonomous_crs, to_crs, err);
+    if (!p.autonomous_) {
+      err = "autonomous frame: " + err;
+      return std::nullopt;
+    }
+  }
+  return p;
+}
+
+bool FixProjector::Project(const Fix& fix, double out[3],
+                           std::string& err) const {
+  if (!fix.has_position) {
+    err = "fix has no position";
+    return false;
+  }
+  const bool corrected = fix.frame == FixFrame::kCorrected;
+  const std::optional<Projection>& p = corrected ? corrected_ : autonomous_;
+  if (!p) {
+    err = std::string("no CRS declared for ") +
+          (corrected ? "corrected" : "autonomous") + " fixes";
+    return false;
+  }
+  if (!p->Forward(fix.lat_deg, fix.lon_deg, fix.h_ell_m, out)) {
+    err = "transformation failed for this position";
+    return false;
+  }
+  return true;
+}
+
 std::string Projection::Description() const {
   PJ_PROJ_INFO info = proj_pj_info(impl_->pj);
   std::string d = info.description != nullptr ? info.description : "";

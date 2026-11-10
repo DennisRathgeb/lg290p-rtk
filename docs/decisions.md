@@ -23,3 +23,7 @@ call below is reversible; each says why. Decisions he made himself are in `desig
 | D16 | On this laptop PROJ 9.9.0 was built from source into `~/.local` | `sudo` needed a password; Arch `proj` package is the clean alternative (`pacman -S proj`) | — |
 | D17 | Raw-stream recording lives in lgrtk (library `RawRecorder` on the `OnRaw` tap; daemon raw tap), not in ar-core | Dennis on issue #64: recording the raw stream is the RTK toolkit's job | — |
 | D18 | Discard the first 150 ms after every open | bench 2026-11-10: the CH343 replays stale FIFO bytes (an hour-old epoch) on open | the bridge is replaced |
+| D19 | A setting whose current value cannot be read is not written (reported in `last_error`) | blind writes would save to flash and maybe reset on every start (final review) | a setting must be forced: add an explicit option |
+| D20 | `FixFrame::kCorrected` requires RTCM injected by us within the correction age + 5 s, and SBAS DGNSS (station 120..158) is autonomous | otherwise SBAS/PPP fixes would be projected with the correction CRS (~0.8 m) | the receiver reports the correction source explicitly |
+| D21 | Stale threshold automatic: 3 epoch periods (read-back FIXRATE, then measured), at least 500 ms | a fixed 500 ms flaps at 1 Hz | — |
+| D22 | Deferred to v0.2.0: `OnSatellites` (GSV is parsed, not surfaced), `PQTMUNIQID` at identify, GPS week/TOW in `Fix` (needs leap seconds), an overrun counter | spec items left out of the M1 plan; none blocks ar-stack | ar-stack needs one of them |

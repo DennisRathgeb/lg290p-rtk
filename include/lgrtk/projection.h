@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 
+#include "lgrtk/fix.h"
 #include "lgrtk/local_frame.h"
 
 namespace lgrtk {
@@ -51,6 +52,32 @@ class Projection {
   struct Impl;
   explicit Projection(std::unique_ptr<Impl> impl);
   std::unique_ptr<Impl> impl_;
+};
+
+/// The CRS each kind of fix is in. The receiver cannot know the frame of its
+/// corrections; the application declares it (frames are never guessed).
+struct FixFrames {
+  std::string corrected_crs;  ///< e.g. "EPSG:4937" (ETRS89/CHTRS95) for swipos;
+                              ///< empty = refuse
+  std::string
+      autonomous_crs;  ///< e.g. "EPSG:4979" (WGS 84 ~ ITRF); empty = refuse
+};
+
+/// Projects fixes with the transformation that matches their FixFrame, so a
+/// corrected and an autonomous position can never be mixed silently.
+class FixProjector {
+ public:
+  /// Builds one Projection per declared frame to `to_crs`.
+  static std::optional<FixProjector> Create(const FixFrames& frames,
+                                            std::string_view to_crs,
+                                            std::string& err);
+  /// Projects `fix` into `out`; false (with a reason) for a fix without a
+  /// position or in a frame without a declared CRS.
+  bool Project(const Fix& fix, double out[3], std::string& err) const;
+
+ private:
+  std::optional<Projection> corrected_;
+  std::optional<Projection> autonomous_;
 };
 
 }  // namespace lgrtk

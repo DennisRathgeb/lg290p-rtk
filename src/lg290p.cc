@@ -317,8 +317,9 @@ void ApplyReadReply(const nmea::OwnedReply& r, ReceiverConfig& have) {
     }
   } else if (c == "PQTMCFGNMEADP" && all_int(6)) {
     have.nmea_decimals = NmeaDecimals{n[0], n[1], n[2], n[3], n[4], n[5]};
-  } else if (c == "PQTMCFGRTK" && all_int(3)) {
-    have.rtk = RtkSettings{n[0], n[1], n[2]};
+  } else if (c == "PQTMCFGRTK" && all_int(2)) {
+    // The timeout field is optional in some firmware; 0 means unknown.
+    have.rtk = RtkSettings{n[0], n[1], all_int(3) ? n[2] : 0};
   } else if (c == "PQTMCFGCNST" && all_int(6)) {
     have.constellations = Constellations{n[0] != 0, n[1] != 0, n[2] != 0,
                                          n[3] != 0, n[4] != 0, n[5] != 0};
@@ -340,50 +341,93 @@ void ApplyReadReply(const nmea::OwnedReply& r, ReceiverConfig& have) {
 }
 
 std::vector<Command> PlanConfig(const ReceiverConfig& want,
-                                const ReceiverConfig& have) {
+                                const ReceiverConfig& have,
+                                std::vector<std::string>* unknown) {
+  // A setting whose current value could not be read is left alone: writing it
+  // blindly would save to flash (and maybe reset) on every start.
+  auto skip = [&](std::string name) {
+    if (unknown != nullptr) {
+      unknown->push_back(std::move(name));
+    }
+  };
   std::vector<Command> out;
-  if (want.fix_interval_ms && want.fix_interval_ms != have.fix_interval_ms) {
-    if (auto c = SetFixRate(*want.fix_interval_ms)) {
-      out.push_back(*c);
+  auto add = [&](std::optional<Command> c) {
+    if (c) {
+      out.push_back(std::move(*c));
+    }
+  };
+  if (want.fix_interval_ms) {
+    if (!have.fix_interval_ms) {
+      skip("PQTMCFGFIXRATE");
+    } else if (want.fix_interval_ms != have.fix_interval_ms) {
+      add(SetFixRate(*want.fix_interval_ms));
     }
   }
   for (const auto& m : want.message_rates) {
     const auto it =
         std::find_if(have.message_rates.begin(), have.message_rates.end(),
                      [&](const MessageRate& x) { return x.name == m.name; });
-    if (it == have.message_rates.end() || it->rate != m.rate) {
+    if (it == have.message_rates.end()) {
+      skip("PQTMCFGMSGRATE " + m.name);
+    } else if (it->rate != m.rate) {
       out.push_back(SetMessageRate(m.name, m.rate, m.version));
     }
   }
-  if (want.nmea_decimals && want.nmea_decimals != have.nmea_decimals) {
-    out.push_back(SetNmeaDecimals(*want.nmea_decimals));
-  }
-  if (want.rtk && want.rtk != have.rtk) {
-    if (auto c = SetRtk(*want.rtk)) {
-      out.push_back(*c);
+  if (want.nmea_decimals) {
+    if (!have.nmea_decimals) {
+      skip("PQTMCFGNMEADP");
+    } else if (want.nmea_decimals != have.nmea_decimals) {
+      out.push_back(SetNmeaDecimals(*want.nmea_decimals));
     }
   }
-  if (want.constellations && want.constellations != have.constellations) {
-    out.push_back(SetConstellations(*want.constellations));
-  }
-  if (want.elevation_mask_deg &&
-      !SameTenth(want.elevation_mask_deg, have.elevation_mask_deg)) {
-    if (auto c = SetElevationMask(*want.elevation_mask_deg)) {
-      out.push_back(*c);
+  if (want.rtk) {
+    if (!have.rtk) {
+      skip("PQTMCFGRTK");
+    } else {
+      // Some firmware answers without the timeout (0 = unknown): compare modes
+      // only.
+      const bool same_modes = want.rtk->diff_mode == have.rtk->diff_mode &&
+                              want.rtk->rel_mode == have.rtk->rel_mode;
+      const bool same_timeout = have.rtk->timeout_s == 0 ||
+                                want.rtk->timeout_s == have.rtk->timeout_s;
+      if (!same_modes || !same_timeout) {
+        add(SetRtk(*want.rtk));
+      }
     }
   }
-  if (want.cnr_mask_dbhz &&
-      !SameTenth(want.cnr_mask_dbhz, have.cnr_mask_dbhz)) {
-    if (auto c = SetCnrMask(*want.cnr_mask_dbhz)) {
-      out.push_back(*c);
+  if (want.constellations) {
+    if (!have.constellations) {
+      skip("PQTMCFGCNST");
+    } else if (want.constellations != have.constellations) {
+      out.push_back(SetConstellations(*want.constellations));
     }
   }
-  if (want.receiver_mode && want.receiver_mode != have.receiver_mode) {
-    out.push_back(SetReceiverMode(*want.receiver_mode));
+  if (want.elevation_mask_deg) {
+    if (!have.elevation_mask_deg) {
+      skip("PQTMCFGELETHD");
+    } else if (!SameTenth(want.elevation_mask_deg, have.elevation_mask_deg)) {
+      add(SetElevationMask(*want.elevation_mask_deg));
+    }
   }
-  if (want.pps && want.pps != have.pps) {
-    if (auto c = SetPps(*want.pps)) {
-      out.push_back(*c);
+  if (want.cnr_mask_dbhz) {
+    if (!have.cnr_mask_dbhz) {
+      skip("PQTMCFGCNRTHD");
+    } else if (!SameTenth(want.cnr_mask_dbhz, have.cnr_mask_dbhz)) {
+      add(SetCnrMask(*want.cnr_mask_dbhz));
+    }
+  }
+  if (want.receiver_mode) {
+    if (!have.receiver_mode) {
+      skip("PQTMCFGRCVRMODE");
+    } else if (want.receiver_mode != have.receiver_mode) {
+      out.push_back(SetReceiverMode(*want.receiver_mode));
+    }
+  }
+  if (want.pps) {
+    if (!have.pps) {
+      skip("PQTMCFGPPS");
+    } else if (want.pps != have.pps) {
+      add(SetPps(*want.pps));
     }
   }
   if (out.empty()) {

@@ -81,18 +81,6 @@ bool StreamFramer::Next(Frame& out) noexcept {
     const uint8_t* p = buf_.data() + pos_;
     const size_t avail = len_ - pos_;
 
-    if (in_oversize_) {
-      // Discard up to and including the line end of the overlong sentence.
-      const void* nl = std::memchr(p, '\n', avail);
-      if (nl == nullptr) {
-        pos_ = len_;
-        return false;
-      }
-      pos_ += static_cast<size_t>(static_cast<const uint8_t*>(nl) - p) + 1;
-      in_oversize_ = false;
-      continue;
-    }
-
     if (!IsStart(p[0])) {
       size_t k = 1;
       while (k < avail && !IsStart(p[k])) {
@@ -103,9 +91,12 @@ bool StreamFramer::Next(Frame& out) noexcept {
     }
 
     if (p[0] == '$') {
-      // Scan for the line end; any non-printable byte means this '$' was noise.
+      // Scan for the line end. A non-printable byte means this '$' was noise;
+      // another '$' means this sentence was cut off and a new one starts
+      // there (lost bytes, a receiver reboot, the CH343 replay on open).
       size_t i = 1;
       bool noise = false;
+      bool restart = false;
       for (; i < avail; ++i) {
         const uint8_t b = p[i];
         if (b == '\n') {
@@ -113,6 +104,10 @@ bool StreamFramer::Next(Frame& out) noexcept {
         }
         if (b == '\r') {
           continue;
+        }
+        if (b == '$') {
+          restart = true;
+          break;
         }
         if (b < 0x20 || b > 0x7E) {
           noise = true;
@@ -126,9 +121,14 @@ bool StreamFramer::Next(Frame& out) noexcept {
         Skip(1);
         continue;
       }
+      if (restart) {
+        ++counters_.bad_nmea;
+        Skip(i);  // resynchronise at the inner '$'
+        continue;
+      }
       if (i > kMaxNmea + 1) {
         ++counters_.oversize;
-        in_oversize_ = true;
+        Skip(i);  // the rest is skipped byte-wise up to the next '$' or 0xD3
         continue;
       }
       if (i == avail) {

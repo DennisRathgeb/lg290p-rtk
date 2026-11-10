@@ -87,6 +87,27 @@ TEST(ProjectionTest, Lv95WithLhn95HeightsNeedsGeoidGrid) {
   EXPECT_NEAR(out[2], 1948.830, 0.01);  // REFRAME: LHN95 height
 }
 
+TEST(FixProjectorTest, PicksByFrameAndRefusesUndeclared) {
+  std::string err;
+  auto p = FixProjector::Create(
+      {.corrected_crs = "EPSG:4937", .autonomous_crs = ""}, "EPSG:2056", err);
+  ASSERT_TRUE(p) << err;
+  Fix f{};
+  f.has_position = true;
+  f.lat_deg = kLat;
+  f.lon_deg = kLon;
+  f.h_ell_m = 2000.0;
+  f.frame = FixFrame::kCorrected;
+  double out[3];
+  EXPECT_TRUE(p->Project(f, out, err)) << err;
+  EXPECT_NEAR(out[0], 2702718.1, 0.2);
+  f.frame = FixFrame::kAutonomous;  // no CRS declared for autonomous fixes
+  EXPECT_FALSE(p->Project(f, out, err));
+  EXPECT_NE(err.find("autonomous"), std::string::npos) << err;
+  f.has_position = false;
+  EXPECT_FALSE(p->Project(f, out, err));
+}
+
 TEST(ProjectionTest, RefusesUnknownCrs) {
   std::string err;
   EXPECT_FALSE(Projection::Create("EPSG:999999", "EPSG:2056", err));

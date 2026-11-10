@@ -91,9 +91,8 @@ class StreamFramer {
   void Skip(size_t n) noexcept;
 
   std::array<uint8_t, 4096> buf_{};
-  size_t len_ = 0;            // bytes in buf_
-  size_t pos_ = 0;            // start of unprocessed data
-  bool in_oversize_ = false;  // discarding the rest of an overlong line
+  size_t len_ = 0;  // bytes in buf_
+  size_t pos_ = 0;  // start of unprocessed data
   Counters counters_;
 };
 
