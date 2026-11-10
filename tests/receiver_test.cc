@@ -245,6 +245,19 @@ TEST(ReceiverTest, MissingPortKeepsRetrying) {
   EXPECT_NE(st.last_error.find("does-not-exist"), std::string::npos);
 }
 
+TEST(ReceiverTest, StaleBytesAtOpenAreDiscarded) {
+  // Bench 2026-11-10: the CH343 delivered an epoch from an hour earlier on open.
+  test::SimLg290p sim;
+  sim.SetBurstOnOpen(true);
+  Observer obs;
+  Lg290pReceiver rx(Opts(sim));
+  obs.Attach(rx);
+  ASSERT_TRUE(rx.Start());
+  ASSERT_TRUE(obs.WaitFixes(5, 5s));
+  std::lock_guard lk(obs.mu);
+  for (const Fix& f : obs.fixes) EXPECT_GE(f.utc_s, 36000.0) << "old epoch published as fresh";
+}
+
 TEST(ReceiverTest, RawRecorderWritesStream) {
   test::SimLg290p sim;
   const auto path = std::filesystem::temp_directory_path() / "lgrtk-raw-test.bin";

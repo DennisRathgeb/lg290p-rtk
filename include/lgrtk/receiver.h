@@ -106,7 +106,7 @@ class RawRecorder {
   /// Opens (truncates) `path`.
   static std::optional<RawRecorder> Open(const std::string& path, std::string& err);
   RawRecorder(RawRecorder&& o) noexcept;
-  RawRecorder& operator=(RawRecorder&&) = delete;
+  RawRecorder& operator=(RawRecorder&& o) noexcept;
   RawRecorder(const RawRecorder&) = delete;
   RawRecorder& operator=(const RawRecorder&) = delete;
   ~RawRecorder();

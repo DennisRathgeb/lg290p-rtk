@@ -33,6 +33,9 @@ class SimLg290p {
   void Replug();
   void SetSilent(bool silent) { silent_ = silent; }
   void SetFixQuality(int q) { quality_ = q; }
+  /// When a client opens the port, first send an old epoch, as the CH343
+  /// bridge does with bytes left in its FIFO from the previous session.
+  void SetBurstOnOpen(bool on) { burst_on_open_ = on; }
   /// Commands (e.g. "PQTMCFGMSGRATE") answered with ERROR,1.
   void Nak(const std::string& command);
   /// Every W command received, as the body without checksum.
@@ -55,6 +58,8 @@ class SimLg290p {
   int slave_keep_ = -1;
   std::atomic<bool> stop_{false}, silent_{false}, plugged_{false};
   std::atomic<int> quality_{1};
+  std::atomic<bool> burst_on_open_{false};
+  bool client_open_ = false;
   std::atomic<int> resets_{0};
   std::atomic<int64_t> silent_until_ns_{0};
   mutable std::mutex mu_;  // guards everything below and master_ swaps

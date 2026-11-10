@@ -24,6 +24,10 @@ int64_t NowNs() noexcept {
 constexpr int kIdentifyRounds = 3;
 constexpr size_t kInjectBudget = 4096;  // bytes per loop iteration
 constexpr int kPumpMs = 50;
+// USB bridges (the CH343 on the Waveshare board) hand over bytes left in
+// their FIFO from the previous session right after open; tcflush does not
+// reach them. Everything read this long after open is discarded.
+constexpr int64_t kOpenDrainNs = 150'000'000;
 
 bool PathExists(const std::string& p) { return ::access(p.c_str(), F_OK) == 0; }
 
@@ -66,6 +70,15 @@ std::optional<RawRecorder> RawRecorder::Open(const std::string& path, std::strin
 }
 
 RawRecorder::RawRecorder(RawRecorder&& o) noexcept : f_(std::exchange(o.f_, nullptr)), bytes_(o.bytes_) {}
+
+RawRecorder& RawRecorder::operator=(RawRecorder&& o) noexcept {
+  if (this != &o) {
+    if (f_ != nullptr) std::fclose(f_);
+    f_ = std::exchange(o.f_, nullptr);
+    bytes_ = o.bytes_;
+  }
+  return *this;
+}
 
 RawRecorder::~RawRecorder() {
   if (f_ != nullptr) std::fclose(f_);
@@ -241,16 +254,21 @@ void Lg290pReceiver::Run() {
 bool Lg290pReceiver::TryOpen() {
   std::string err;
   port_ = SerialPort::Open(opt_.port, opt_.baud, err);
-  std::lock_guard lk(mu_);
   if (!port_) {
+    std::lock_guard lk(mu_);
     status_.last_error = err;
     return false;
   }
-  status_.baud = opt_.baud;
-  if (had_connection_) ++status_.reconnects;
+  std::array<uint8_t, 2048> junk{};
+  const int64_t drain_until = NowNs() + kOpenDrainNs;
+  while (NowNs() < drain_until && port_->Read(junk, 20) >= 0) {
+  }
   framer_.Reset();
   epoch_.Reset();
   last_utc_ = -1.0;
+  std::lock_guard lk(mu_);
+  status_.baud = opt_.baud;
+  if (had_connection_) ++status_.reconnects;
   return true;
 }
 

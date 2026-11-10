@@ -79,7 +79,7 @@ void SimLg290p::OpenPty() {
   if (openpty(&m, &s, nullptr, nullptr, nullptr) != 0) std::abort();
   termios t{};
   tcgetattr(s, &t);
-  cfmakeraw(&t);
+  cfmakeraw(&t);  // VMIN 1; a client opening the port sets VMIN 0 (see Loop)
   cfsetspeed(&t, B460800);
   tcsetattr(s, TCSANOW, &t);
   fcntl(m, F_SETFL, fcntl(m, F_GETFL) | O_NONBLOCK);
@@ -93,6 +93,7 @@ void SimLg290p::OpenPty() {
 void SimLg290p::ClosePty() {
   std::lock_guard lk(mu_);
   plugged_ = false;
+  client_open_ = false;
   if (master_ >= 0) close(master_);
   if (slave_keep_ >= 0) close(slave_keep_);
   master_ = slave_keep_ = -1;
@@ -206,6 +207,18 @@ void SimLg290p::Loop() {
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
     std::lock_guard lk(mu_);
     if (!plugged_ || master_ < 0) continue;
+    if (!client_open_) {
+      termios t{};
+      if (tcgetattr(slave_keep_, &t) == 0 && t.c_cc[VMIN] == 0) {
+        client_open_ = true;
+        if (burst_on_open_) {
+          // An old epoch, its tail spliced into the next line, like the bench capture.
+          const std::string old = Line("GNGGA,003538.300,4637.80000000,N,00846.80000000,E,1,24,0.70,1950.000,M,49.100,M,,") +
+                                  Line("GNRMC,003538.300,A,4637.80000000,N,00846.80000000,E,0.010,045.00,101126,,,A,V");
+          (void)!write(master_, old.data(), old.size());
+        }
+      }
+    }
     const ssize_t n = read(master_, buf.data(), buf.size());
     const bool booting = NowNs() < silent_until_ns_;
     if (n > 0 && !booting && HostBaudMatches()) {
