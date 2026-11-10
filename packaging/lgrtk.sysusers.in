@@ -1,0 +1,4 @@
+# lgrtkd runs as the system user "lgrtk", a member of the group that owns
+# serial devices on this distribution.
+u lgrtk - "LG290P RTK daemon" /var/lib/lgrtk
+m lgrtk @LGRTK_SERIAL_GROUP@

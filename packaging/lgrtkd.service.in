@@ -1,0 +1,45 @@
+[Unit]
+Description=LG290P RTK GNSS daemon (gpsd protocol)
+Documentation=https://github.com/DennisRathgeb/lg290p-rtk/blob/main/docs/daemon.md
+After=network.target
+# DeviceAllow= only resolves device groups (ttyACM, ttyUSB) that exist when the
+# unit starts, so load the serial drivers first: the receiver may be plugged
+# in later.
+Wants=modprobe@cdc_acm.service modprobe@usbserial.service
+After=modprobe@cdc_acm.service modprobe@usbserial.service
+
+[Service]
+Type=notify
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/lgrtkd --config @LGRTK_SYSCONFDIR@/lgrtk/lgrtkd.toml
+Restart=on-failure
+RestartSec=2
+WatchdogSec=10
+User=lgrtk
+Group=lgrtk
+RuntimeDirectory=lgrtkd
+RuntimeDirectoryMode=0755
+UMask=0007
+# NTRIP password (optional): put it in /etc/credstore/ntrip-password (one line,
+# mode 0600, root) and leave ntrip.password_file empty; systemd hands it to the
+# daemon. A missing file is not an error (unlike LoadCredential=).
+ImportCredential=ntrip-password
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+DevicePolicy=closed
+DeviceAllow=char-ttyACM rw
+DeviceAllow=char-ttyUSB rw
+DeviceAllow=char-ttyS rw
+
+[Install]
+WantedBy=multi-user.target

@@ -65,6 +65,8 @@ SimLg290p::SimLg290p(int baud) : baud_(baud) {
                {"MSG:RMC", "1"},
                {"MSG:GST", "0"},
                {"MSG:PQTMEPE", "0,2"},
+               {"MSG:GSA", "1"},
+               {"MSG:GSV", "1"},
                {"MSG:GLL", "1"},
                {"MSG:VTG", "1"}};
   OpenPty();
@@ -318,6 +320,15 @@ void SimLg290p::Loop() {
       Send(Line(std::string("GNGGA,") + t +
                 ",4637.80000000,N,00846.80000000,E," + std::to_string(q) +
                 ",24,0.70,1950.000,M,49.100,M," + age));
+    }
+    if (rate("GSA") > 0) {
+      Send(Line("GNGSA,A,3,10,12,23,,,,,,,,,,1.20,0.70,0.98,1"));
+    }
+    if (rate("GSV") > 0) {
+      Send(
+          Line("GPGSV,2,1,05,10,77,300,45,12,40,082,41,23,58,153,44,25,46,"
+               "137,38,1"));
+      Send(Line("GPGSV,2,2,05,32,10,020,,1"));
     }
     if (rate("RMC") > 0) {
       Send(Line(

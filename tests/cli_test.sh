@@ -40,5 +40,5 @@ set -e
 out=$("$LGRTK" --port "$PORT" watch --count 3) || fail "watch exit $?"
 [ "$(grep -c "single" <<<"$out")" -ge 3 ] || fail "watch: $out"
 
-"$LGRTK" version | grep -q "lgrtk 0.1.0" || fail "version"
+"$LGRTK" version | grep -q "lgrtk 0.2.0" || fail "version"
 echo "cli_test: ok"

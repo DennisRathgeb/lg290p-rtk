@@ -1,0 +1,34 @@
+# Maintainer: Dennis Rathgeb
+pkgname=lg290p-rtk
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="Driver, CLI and gpsd-compatible daemon for the Quectel LG290P RTK GNSS receiver"
+arch=('x86_64' 'aarch64')
+url="https://github.com/DennisRathgeb/lg290p-rtk"
+license=('MIT')
+depends=('proj' 'tomlplusplus' 'gcc-libs' 'glibc')
+makedepends=('cmake' 'ninja' 'git' 'nlohmann-json' 'gtest' 'python')
+optdepends=('chrony: GNSS time through the SOCK refclock')
+backup=('etc/lgrtk/lgrtkd.toml')
+source=("git+https://github.com/DennisRathgeb/lg290p-rtk.git#tag=v${pkgver}")
+sha256sums=('SKIP')
+
+build() {
+  cmake -S lg290p-rtk -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DLGRTK_SYSCONFDIR=/etc \
+    -DLGRTK_SERIAL_GROUP=uucp \
+    -DLGRTK_BUILD_TESTS=ON
+  cmake --build build
+}
+
+check() {
+  ctest --test-dir build --output-on-failure
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+  install -Dm644 lg290p-rtk/packaging/lgrtkd.toml "$pkgdir/etc/lgrtk/lgrtkd.toml"
+  install -Dm644 lg290p-rtk/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

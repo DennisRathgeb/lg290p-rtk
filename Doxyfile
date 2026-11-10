@@ -1,5 +1,5 @@
 PROJECT_NAME           = "lgrtk"
-PROJECT_NUMBER         = 0.1.0
+PROJECT_NUMBER         = 0.2.0
 PROJECT_BRIEF          = "Linux toolkit for the Quectel LG290P RTK GNSS receiver"
 OUTPUT_DIRECTORY       = build/docs
 INPUT                  = include/lgrtk docs/api.md

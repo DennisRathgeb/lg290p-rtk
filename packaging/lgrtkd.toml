@@ -1,0 +1,38 @@
+# lgrtkd configuration (installed as /etc/lgrtk/lgrtkd.toml).
+# Every key is optional; the values shown are the defaults unless noted.
+# Unknown keys are an error, so a typo stops the daemon instead of being ignored.
+
+[receiver]
+# The udev rule in this package creates /dev/lg290p0 for the Waveshare board (CH343, 1a86:55d3).
+port = "/dev/lg290p0"            # default "/dev/ttyACM0"
+baud = 460800                    # tried first; other speeds are detected automatically
+apply_config = true              # read back the receiver settings, write only differences
+
+[gpsd]
+# gpsd JSON protocol, so cgps, gpspipe -w, QGIS and Python "gps" work unchanged.
+# Port 2947 is gpsd's: stop gpsd or choose another port.
+listen = "127.0.0.1:2947"
+# device_name = "/dev/lg290p0"   # what clients see as "device"; default: receiver.port
+
+[raw]
+# Untouched receiver bytes (NMEA + RTCM) for loggers and RTKLIB str2str. "" = off.
+listen = ""
+
+[chrony]
+# chrony SOCK refclock path, e.g. "/run/chrony.lgrtk.sock". "" = off.
+sock = ""
+
+[control]
+# Unix socket for "lgrtk ctl".
+sock = "/run/lgrtkd/control.sock"
+
+[ntrip]
+enabled = false
+host = ""                        # e.g. "www.swipos.ch"
+port = 2101
+mountpoint = ""
+user = ""
+# One line. With systemd, leave this empty and put the password in /etc/credstore/ntrip-password.
+password_file = ""
+version = 2
+send_gga = true                  # needed by VRS / nearest-base mountpoints

@@ -25,6 +25,9 @@
 #include "lgrtk/ntrip.h"
 #include "lgrtk/receiver.h"
 #include "lgrtk/version.h"
+#ifdef LGRTK_HAVE_CTL
+#include "daemon/control.h"
+#endif
 #ifdef LGRTK_HAVE_PROJ
 #include "lgrtk/projection.h"
 #endif
@@ -75,6 +78,12 @@ corrections and coordinates:
   ntrip run --host H [--port-ntrip P] --mount M [--user U] [--password-file F] [--v1] [--no-gga]
                                       receiver + NTRIP corrections, one line per fix
   project --from CRS --to CRS LAT LON H   e.g. --from EPSG:4937 --to EPSG:2056+5729
+
+talking to a running lgrtkd (which owns the port):
+  ctl [--socket PATH] status          daemon and receiver state, counters
+  ctl [--socket PATH] reset hot|warm|cold|soft
+  ctl [--socket PATH] apply-default   same as `config apply-default`, through the daemon
+                                      (default socket /run/lgrtkd/control.sock)
 
 exit codes: 0 ok, 1 runtime error, 2 usage error
 )";
@@ -675,6 +684,46 @@ int CmdProject(Args& a) {
 
 }  // namespace
 
+#ifdef LGRTK_HAVE_CTL
+// `lgrtk ctl ...`: one request to lgrtkd's control socket.
+int CmdCtl(Args& a) {
+  const std::string sock =
+      a.Option("--socket").value_or("/run/lgrtkd/control.sock");
+  const std::string sub = a.Next();
+  nlohmann::json req;
+  if (sub == "status" || sub == "apply-default") {
+    req = {{"cmd", sub}};
+  } else if (sub == "reset") {
+    req = {{"cmd", "reset"}, {"kind", a.Next()}};
+  } else {
+    return Usage("ctl: expected status, reset KIND or apply-default");
+  }
+  if (a.Has()) {
+    return Usage("ctl: unexpected argument " + a.Peek());
+  }
+  std::string err;
+  const auto reply = lgrtk::daemon::ControlRequest(sock, req, 5000, &err);
+  if (!reply) {
+    std::cerr << "lgrtk: " << err << "\n";
+    return kRuntime;
+  }
+  if (!reply->value("ok", false)) {
+    std::cerr << "lgrtk: " << reply->value("error", std::string("failed"))
+              << "\n";
+    return kRuntime;
+  }
+  for (const auto& [key, value] : reply->items()) {
+    if (key == "ok") {
+      continue;
+    }
+    std::cout << key << ": "
+              << (value.is_string() ? value.get<std::string>() : value.dump())
+              << "\n";
+  }
+  return 0;
+}
+#endif
+
 int main(int argc, char** argv) {
   std::signal(SIGINT, OnSignal);
   std::signal(SIGTERM, OnSignal);
@@ -725,5 +774,10 @@ int main(int argc, char** argv) {
   if (cmd == "project") {
     return CmdProject(a);
   }
+#ifdef LGRTK_HAVE_CTL
+  if (cmd == "ctl") {
+    return CmdCtl(a);
+  }
+#endif
   return Usage("unknown command '" + cmd + "'");
 }

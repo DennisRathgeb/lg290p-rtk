@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(lgrtk VERSION 0.1.0 LANGUAGES CXX)
+project(lgrtk VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,6 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(LGRTK_BUILD_TESTS "Build the tests" ${PROJECT_IS_TOP_LEVEL})
 option(LGRTK_BUILD_APPS "Build the lgrtk CLI" ${PROJECT_IS_TOP_LEVEL})
+option(LGRTK_BUILD_DAEMON "Build the lgrtkd daemon (needs toml++ and nlohmann/json, fetched if absent)" ${PROJECT_IS_TOP_LEVEL})
 option(LGRTK_BUILD_EXAMPLES "Build the examples" ${PROJECT_IS_TOP_LEVEL})
 option(LGRTK_WITH_PROJ "Build lgrtk::projection (needs PROJ)" ON)
 option(LGRTK_WERROR "Treat warnings as errors" OFF)
@@ -55,12 +56,39 @@ if(LGRTK_WITH_PROJ)
   endif()
 endif()
 
+# ---- daemon: internal core library (not installed) + lgrtkd ----
+if(LGRTK_BUILD_DAEMON)
+  include(cmake/DaemonDeps.cmake)
+  add_library(lgrtkd_core STATIC
+    src/daemon/config.cc
+    src/daemon/gpsd_json.cc
+    src/daemon/sky.cc
+    src/daemon/event_loop.cc
+    src/daemon/gpsd_server.cc
+    src/daemon/raw_tap.cc
+    src/daemon/chrony.cc
+    src/daemon/sd_notify.cc
+    src/daemon/control.cc
+    src/daemon/daemon.cc
+  )
+  target_include_directories(lgrtkd_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_link_libraries(lgrtkd_core
+    PUBLIC lgrtk nlohmann_json::nlohmann_json
+    PRIVATE tomlplusplus::tomlplusplus $<BUILD_INTERFACE:lgrtk_warnings>)
+  add_executable(lgrtkd apps/lgrtkd/main.cc)
+  target_link_libraries(lgrtkd PRIVATE lgrtkd_core lgrtk_warnings)
+endif()
+
 if(LGRTK_BUILD_APPS)
   add_executable(lgrtk_cli apps/lgrtk/main.cc)
   set_target_properties(lgrtk_cli PROPERTIES OUTPUT_NAME lgrtk)
   target_link_libraries(lgrtk_cli PRIVATE lgrtk lgrtk_warnings)
   if(LGRTK_HAVE_PROJ)
     target_link_libraries(lgrtk_cli PRIVATE lgrtk::projection)
+  endif()
+  if(LGRTK_BUILD_DAEMON)
+    target_link_libraries(lgrtk_cli PRIVATE lgrtkd_core)
+    target_compile_definitions(lgrtk_cli PRIVATE LGRTK_HAVE_CTL=1)
   endif()
 endif()
 
@@ -99,6 +127,28 @@ configure_file(cmake/lgrtk.pc.in ${CMAKE_CURRENT_BINARY_DIR}/lgrtk.pc @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/lgrtk.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 if(LGRTK_BUILD_APPS)
   install(TARGETS lgrtk_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+# ---- daemon and its system files ----
+if(LGRTK_BUILD_DAEMON)
+  # Group owning serial devices: uucp on Arch, dialout on Debian/Ubuntu.
+  if(EXISTS /etc/arch-release)
+    set(_lgrtk_group uucp)
+  else()
+    set(_lgrtk_group dialout)
+  endif()
+  set(LGRTK_SERIAL_GROUP ${_lgrtk_group} CACHE STRING "Group that owns serial devices")
+  set(LGRTK_SYSCONFDIR ${CMAKE_INSTALL_FULL_SYSCONFDIR} CACHE PATH "Where lgrtk/lgrtkd.toml lives")
+  set(LGRTK_SYSTEMD_UNITDIR lib/systemd/system CACHE PATH "systemd unit directory (relative to the prefix)")
+  set(LGRTK_UDEV_RULESDIR lib/udev/rules.d CACHE PATH "udev rules directory (relative to the prefix)")
+  set(LGRTK_SYSUSERSDIR lib/sysusers.d CACHE PATH "sysusers.d directory (relative to the prefix)")
+  configure_file(packaging/lgrtkd.service.in ${CMAKE_CURRENT_BINARY_DIR}/lgrtkd.service @ONLY)
+  configure_file(packaging/lgrtk.sysusers.in ${CMAKE_CURRENT_BINARY_DIR}/lgrtk.conf @ONLY)
+  install(TARGETS lgrtkd RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/lgrtkd.service DESTINATION ${LGRTK_SYSTEMD_UNITDIR})
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/lgrtk.conf DESTINATION ${LGRTK_SYSUSERSDIR})
+  install(FILES packaging/99-lg290p.rules DESTINATION ${LGRTK_UDEV_RULESDIR})
+  install(FILES packaging/lgrtkd.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/lgrtk)
 endif()
 
 if(LGRTK_BUILD_TESTS)
