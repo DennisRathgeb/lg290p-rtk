@@ -36,6 +36,8 @@ class Projection {
   Projection(Projection&&) noexcept;
   /// Moves the PROJ context and pipeline.
   Projection& operator=(Projection&&) noexcept;
+  Projection(const Projection&) = delete;
+  Projection& operator=(const Projection&) = delete;
   ~Projection();
 
   /// Geodetic → target. False if PROJ fails for this point.

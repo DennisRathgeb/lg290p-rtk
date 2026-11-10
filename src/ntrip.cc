@@ -247,7 +247,7 @@ void NtripClient::SetPosition(const Fix& fix) {
   if (!fix.has_position) {
     return;
   }
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   position_ = fix;
 }
 
@@ -272,7 +272,7 @@ void NtripClient::Stop() {
 }
 
 NtripStatus NtripClient::Status() const {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   NtripStatus s = status_;
   s.last_data_age_ns = last_data_ns_ == 0 ? -1 : MonotonicNs() - last_data_ns_;
   return s;
@@ -281,7 +281,7 @@ NtripStatus NtripClient::Status() const {
 void NtripClient::SetState(NtripState s, const std::string& reason) {
   NtripState from;
   {
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     from = status_.state;
     if (s == NtripState::kAuthFailed || s == NtripState::kBackoff ||
         s == NtripState::kStalled) {
@@ -315,7 +315,7 @@ void NtripClient::Run() {
       bool have = false;
       while (!StopRequested()) {
         {
-          std::lock_guard lk(mu_);
+          std::scoped_lock lk(mu_);
           have = position_.has_value();
         }
         if (have) {
@@ -335,7 +335,7 @@ void NtripClient::Run() {
     Session();
     NtripState st;
     {
-      std::lock_guard lk(mu_);
+      std::scoped_lock lk(mu_);
       st = status_.state;
     }
     if (st == NtripState::kAuthFailed) {
@@ -349,7 +349,7 @@ void NtripClient::Run() {
     }
     std::string err;
     {
-      std::lock_guard lk(mu_);
+      std::scoped_lock lk(mu_);
       err = status_.last_error;
     }
     SetState(NtripState::kBackoff, err);

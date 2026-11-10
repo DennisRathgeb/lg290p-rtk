@@ -18,6 +18,13 @@ class CorrectionSink {
   /// Queues whole RTCM3 frames (one or more, never a partial frame).
   /// Thread-safe for one producer. Returns false when the queue is full.
   virtual bool Inject(std::span<const uint8_t> rtcm_frames) = 0;
+
+ protected:
+  CorrectionSink() = default;
+  CorrectionSink(const CorrectionSink&) = default;
+  CorrectionSink& operator=(const CorrectionSink&) = default;
+  CorrectionSink(CorrectionSink&&) = default;
+  CorrectionSink& operator=(CorrectionSink&&) = default;
 };
 
 }  // namespace lgrtk

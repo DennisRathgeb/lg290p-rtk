@@ -184,19 +184,19 @@ void Lg290pReceiver::Stop() {
 }
 
 ReceiverStatus Lg290pReceiver::Status() const {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   ReceiverStatus s = status_;
   s.last_fix_age_ns = latest_ ? MonotonicNs() - latest_->t_arrival_ns : -1;
   return s;
 }
 
 std::optional<Fix> Lg290pReceiver::LatestFix() const {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   return latest_;
 }
 
 FixSnapshot Lg290pReceiver::Snapshot() const {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   FixSnapshot s;
   s.fix = latest_;
   s.age_ns = latest_ ? MonotonicNs() - latest_->t_arrival_ns : -1;
@@ -212,7 +212,7 @@ std::future<std::optional<nmea::OwnedReply>> Lg290pReceiver::Send(
     p.promise.set_value(std::nullopt);  // nobody would ever execute it
     return fut;
   }
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   queue_.push_back(std::move(p));
   return fut;
 }
@@ -221,7 +221,7 @@ bool Lg290pReceiver::Inject(std::span<const uint8_t> frames) {
   const size_t head = ring_head_.load(std::memory_order_relaxed);
   const size_t tail = ring_tail_.load(std::memory_order_acquire);
   if (frames.size() > kRingSize - (head - tail)) {
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     status_.inject_dropped += frames.size();
     return false;
   }
@@ -235,7 +235,7 @@ bool Lg290pReceiver::Inject(std::span<const uint8_t> frames) {
 void Lg290pReceiver::SetState(State s, std::string reason) {
   StatusEvent ev{};
   {
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     if (status_.state == s) {
       if (s == State::kReconnecting) {
         status_.last_error = reason;
@@ -260,7 +260,7 @@ void Lg290pReceiver::Run() {
   backoff_ms_ = opt_.backoff_min_ms;
   enum class Phase { kConnect, kIdentify, kStream } phase = Phase::kConnect;
   {
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     if (status_.state == State::kStopped) {
       status_.state = State::kDisconnected;
     }
@@ -342,7 +342,7 @@ bool Lg290pReceiver::TryOpen() {
   std::string err;
   port_ = SerialPort::Open(opt_.port, opt_.baud, err);
   if (!port_) {
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     status_.last_error = err;
     return false;
   }
@@ -353,7 +353,7 @@ bool Lg290pReceiver::TryOpen() {
   framer_.Reset();
   epoch_.Reset();
   last_utc_ = -1.0;
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   status_.baud = opt_.baud;
   if (had_connection_) {
     ++status_.reconnects;
@@ -392,7 +392,7 @@ bool Lg290pReceiver::Pump(int timeout_ms) {
     on_raw_(data);
   }
   framer_.Feed(data, [&](const Frame& f) { OnFrame(f, t); });
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   status_.bytes += static_cast<uint64_t>(n);
   status_.framer = framer_.Stats();
   return true;
@@ -481,7 +481,9 @@ bool Lg290pReceiver::Execute(const lg290p::Command& cmd,
   const int64_t deadline = MonotonicNs() + MsToNs(opt_.command_timeout_ms);
   while (done < cmd.text.size()) {
     size_t w = 0;
-    if (!port_->WriteSome(std::span(p + done, cmd.text.size() - done), w)) {
+    // Pump() below may have closed the port.
+    if (!port_ ||
+        !port_->WriteSome(std::span(p + done, cmd.text.size() - done), w)) {
       port_.reset();
       return false;
     }
@@ -541,7 +543,7 @@ bool Lg290pReceiver::Identify() {
         return false;
       }
       if (reply && reply->ok && !reply->values.empty()) {
-        std::lock_guard lk(mu_);
+        std::scoped_lock lk(mu_);
         status_.firmware = reply->values[0];
         status_.baud = b;
         return true;
@@ -572,7 +574,7 @@ bool Lg290pReceiver::Configure() {
     std::vector<std::string> unknown;
     const auto plan = lg290p::PlanConfig(opt_.config, have, &unknown);
     if (!unknown.empty()) {
-      std::lock_guard lk(mu_);
+      std::scoped_lock lk(mu_);
       status_.last_error =
           "left unchanged (unreadable or invalid): " +
           JoinNames(unknown, [](const std::string& u) { return u; });
@@ -581,7 +583,7 @@ bool Lg290pReceiver::Configure() {
       return true;
     }
     if (pass == kConfigPasses - 1) {
-      std::lock_guard lk(mu_);
+      std::scoped_lock lk(mu_);
       status_.last_error =
           "receiver did not keep after reset: " +
           JoinNames(plan, [](const lg290p::Command& c) { return c.reply_to; });
@@ -596,16 +598,15 @@ bool Lg290pReceiver::Configure() {
         if (!Execute(cmd, reply)) {
           return false;
         }
-        if (cmd.reply_to.empty()) {
-          ok = true;  // nothing to wait for (the reset)
-        } else if (reply && reply->ok) {
+        // A command without a reply (the reset) succeeds once written.
+        if (cmd.reply_to.empty() || (reply && reply->ok)) {
           ok = true;
         } else if (reply) {
           why = "error " + std::to_string(reply->error_code);
         }
       }
       if (!ok) {
-        std::lock_guard lk(mu_);
+        std::scoped_lock lk(mu_);
         status_.last_error = "receiver refused " +
                              std::string(internal::TrimLineEnd(cmd.text)) +
                              " (" + why + ")";
@@ -656,7 +657,7 @@ void Lg290pReceiver::DrainInject() {
   ring_tail_.store(tail, std::memory_order_release);
   if (sent > 0) {
     last_inject_ns_ = MonotonicNs();
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     status_.rtcm_injected += sent;
   }
 }
@@ -664,8 +665,11 @@ void Lg290pReceiver::DrainInject() {
 void Lg290pReceiver::WriteInFlight() {
   // One non-blocking write per loop iteration: a device that stops reading
   // must not stall the I/O thread (fixes, stale detection, Stop()).
+  if (!in_flight_ || !port_) {
+    return;
+  }
   const std::string& text = in_flight_->cmd.text;
-  if (!port_ || in_flight_->written >= text.size()) {
+  if (in_flight_->written >= text.size()) {
     return;
   }
   const auto* p = reinterpret_cast<const uint8_t*>(text.data());
@@ -684,7 +688,7 @@ void Lg290pReceiver::ServeQueue() {
     if (ring_tail_.load() != ring_head_.load()) {
       return;  // never split an RTCM frame
     }
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     if (queue_.empty()) {
       return;
     }
@@ -693,6 +697,9 @@ void Lg290pReceiver::ServeQueue() {
     in_flight_deadline_ = MonotonicNs() + MsToNs(opt_.command_timeout_ms);
   }
   WriteInFlight();
+  if (!in_flight_) {
+    return;  // WriteInFlight does not clear it
+  }
   const bool sent = in_flight_->written >= in_flight_->cmd.text.size();
   if (!port_ || MonotonicNs() > in_flight_deadline_ ||
       (sent && in_flight_->cmd.reply_to.empty())) {
@@ -710,7 +717,7 @@ void Lg290pReceiver::FinishInFlight(std::optional<nmea::OwnedReply> reply) {
 State Lg290pReceiver::PublishFix(const Fix& fix) {
   State current = State::kDisconnected;
   {
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     latest_ = fix;
     ++status_.epochs;
     current = status_.state;
@@ -722,12 +729,12 @@ State Lg290pReceiver::PublishFix(const Fix& fix) {
 }
 
 State Lg290pReceiver::CurrentState() const {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   return status_.state;
 }
 
 std::string Lg290pReceiver::LastError() const {
-  std::lock_guard lk(mu_);
+  std::scoped_lock lk(mu_);
   return status_.last_error;
 }
 
@@ -735,7 +742,7 @@ void Lg290pReceiver::FailPendingQueue() {
   FinishInFlight(std::nullopt);
   std::deque<Pending> q;
   {
-    std::lock_guard lk(mu_);
+    std::scoped_lock lk(mu_);
     q.swap(queue_);
   }
   for (auto& p : q) {

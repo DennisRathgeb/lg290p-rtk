@@ -153,6 +153,8 @@ class Lg290pReceiver final : public CorrectionSink {
   ~Lg290pReceiver() override;
   Lg290pReceiver(const Lg290pReceiver&) = delete;
   Lg290pReceiver& operator=(const Lg290pReceiver&) = delete;
+  Lg290pReceiver(Lg290pReceiver&&) = delete;
+  Lg290pReceiver& operator=(Lg290pReceiver&&) = delete;
 
   /// Called with every epoch.
   void OnFix(std::function<void(const Fix&)> cb) { on_fix_ = std::move(cb); }
@@ -264,7 +266,7 @@ class Lg290pReceiver final : public CorrectionSink {
   std::deque<Pending> queue_;
 
   // Single-producer single-consumer byte ring for corrections.
-  static constexpr size_t kRingSize = 64 * 1024;
+  static constexpr size_t kRingSize = size_t{64} * 1024;
   std::unique_ptr<uint8_t[]> ring_;
   std::atomic<size_t> ring_head_{0};  // written by the producer
   std::atomic<size_t> ring_tail_{0};  // written by the I/O thread

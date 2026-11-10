@@ -122,7 +122,7 @@ int SerialPort::Read(std::span<uint8_t> buf, int timeout_ms) noexcept {
   if (r == 0) {
     return 0;
   }
-  if (p.revents & POLLIN) {
+  if ((p.revents & POLLIN) != 0) {
     const ssize_t n = ::read(fd_, buf.data(), buf.size());
     if (n > 0) {
       return static_cast<int>(n);
@@ -132,7 +132,7 @@ int SerialPort::Read(std::span<uint8_t> buf, int timeout_ms) noexcept {
     }
     return -1;  // EOF or EIO: the device went away
   }
-  if (p.revents & (POLLHUP | POLLERR | POLLNVAL)) {
+  if ((p.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
     return -1;
   }
   return 0;

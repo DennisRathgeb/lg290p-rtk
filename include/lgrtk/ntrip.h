@@ -77,6 +77,8 @@ class NtripClient {
   ~NtripClient();
   NtripClient(const NtripClient&) = delete;
   NtripClient& operator=(const NtripClient&) = delete;
+  NtripClient(NtripClient&&) = delete;
+  NtripClient& operator=(NtripClient&&) = delete;
 
   /// Latest rover position for GGA upload. Thread-safe; call from OnFix.
   void SetPosition(const Fix& fix);
