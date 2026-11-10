@@ -1,5 +1,6 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
-// Test helpers: a line-reading socket client and an event loop on a thread.
+// Test helpers: polling with a timeout, a line-reading socket client and an
+// event loop on a thread.
 #ifndef LGRTK_TESTS_DAEMON_NET_UTIL_H_
 #define LGRTK_TESTS_DAEMON_NET_UTIL_H_
 
@@ -21,6 +22,21 @@
 #include "internal/unix_socket.h"
 
 namespace lgrtk::test {
+
+/// Polls `done` until it returns true or `timeout` passes; returns its last
+/// value.
+inline bool WaitFor(
+    const std::function<bool()>& done,
+    std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
+  const auto end = std::chrono::steady_clock::now() + timeout;
+  while (!done()) {
+    if (std::chrono::steady_clock::now() >= end) {
+      return false;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  return true;
+}
 
 /// A blocking client socket with a line reader.
 class LineClient {

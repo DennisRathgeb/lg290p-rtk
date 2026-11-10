@@ -50,6 +50,7 @@ if(LGRTK_BUILD_DAEMON)
     daemon/config_test.cc
     daemon/gpsd_json_test.cc
     daemon/sky_test.cc
+    daemon/event_loop_test.cc
     daemon/gpsd_server_test.cc
     daemon/raw_tap_test.cc
     daemon/chrony_test.cc

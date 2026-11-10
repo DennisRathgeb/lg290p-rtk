@@ -44,14 +44,11 @@ TEST(RawTapTest, ForwardsBytesVerbatim) {
   });
   test::LineClient c;
   ASSERT_TRUE(c.ConnectTcp(port));
-  for (int i = 0; i < 100; ++i) {
+  ASSERT_TRUE(test::WaitFor([&] {
     size_t n = 0;
     lt.Sync([&] { n = tap->Clients(); });
-    if (n > 0) {
-      break;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
+    return n > 0;
+  }));
   const auto rtcm = test::Rtcm({0x3E, 0xD0, 0x00, 0x0A, 0x00});
   std::string expect = test::Nmea("GNGGA,1") + "\r\n";
   expect.append(rtcm.begin(), rtcm.end());
