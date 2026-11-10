@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 410" width="880" height="410" font-family="Helvetica, Arial, sans-serif" font-size="14">
+  <title>lgrtk receiver state machine</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .s { fill: #ffffff; stroke: #334155; stroke-width: 1.5; rx: 8; }
+      .ok { fill: #ecfdf5; stroke: #047857; }
+      .warn { fill: #fffbeb; stroke: #b45309; }
+      .bad { fill: #fef2f2; stroke: #b91c1c; }
+      .t { fill: #0f172a; text-anchor: middle; dominant-baseline: middle; font-weight: 600; }
+      .l { fill: #475569; font-size: 12px; text-anchor: middle; }
+      .e { stroke: #475569; stroke-width: 1.4; fill: none; marker-end: url(#a); }
+    </style>
+  </defs>
+  <rect width="880" height="410" fill="#f8fafc"/>
+
+  <!-- main path -->
+  <rect class="s" x="20" y="60" width="130" height="44"/><text class="t" x="85" y="82">disconnected</text>
+  <rect class="s" x="190" y="60" width="110" height="44"/><text class="t" x="245" y="82">opening</text>
+  <rect class="s" x="340" y="60" width="120" height="44"/><text class="t" x="400" y="82">identifying</text>
+  <rect class="s" x="500" y="60" width="130" height="44"/><text class="t" x="565" y="82">configuring</text>
+  <rect class="s ok" x="680" y="60" width="130" height="44"/><text class="t" x="745" y="82">streaming</text>
+
+  <path class="e" d="M150,82 H188"/><text class="l" x="170" y="52">Start()</text>
+  <path class="e" d="M300,82 H338"/><text class="l" x="320" y="52">opened</text>
+  <path class="e" d="M460,82 H498"/><text class="l" x="480" y="52">VERNO</text>
+  <path class="e" d="M630,82 H678"/><text class="l" x="655" y="52">all acked</text>
+
+  <!-- stale -->
+  <rect class="s warn" x="680" y="190" width="130" height="44"/><text class="t" x="745" y="212">stale</text>
+  <path class="e" d="M730,104 V188"/><text class="l" x="688" y="150" text-anchor="end">no epoch</text>
+  <text class="l" x="688" y="164" text-anchor="end">for 500 ms</text>
+  <path class="e" d="M760,188 V106"/><text class="l" x="800" y="150" text-anchor="start">data</text>
+  <text class="l" x="800" y="164" text-anchor="start">resumes</text>
+
+  <!-- reconnecting -->
+  <rect class="s warn" x="300" y="300" width="160" height="44"/><text class="t" x="380" y="322">reconnecting</text>
+  <path class="e" d="M745,234 V322 H462"/><text class="l" x="600" y="314">port vanished / I/O error</text>
+  <path class="e" d="M245,104 V322 H298"/><text class="l" x="238" y="250" text-anchor="end">open failed</text>
+  <path class="e" d="M340,300 C300,250 250,170 245,106"/>
+  <text class="l" x="380" y="362">retry with backoff 250 ms → 5 s,</text>
+  <text class="l" x="380" y="376">at once when the device reappears</text>
+
+  <!-- fault -->
+  <rect class="s bad" x="500" y="190" width="130" height="44"/><text class="t" x="565" y="212">fault</text>
+  <path class="e" d="M565,104 V188"/><text class="l" x="572" y="150" text-anchor="start">command refused</text>
+  <path class="e" d="M420,104 C440,160 470,200 498,208"/><text class="l" x="430" y="182" text-anchor="end">no reply at any baud</text>
+
+  <!-- reset loop -->
+  <path class="e" d="M545,60 C520,20 440,20 415,58"/><text class="l" x="480" y="24">reset needed → re-identify</text>
+
+  <text x="20" y="398" fill="#475569" font-size="12">Every transition is reported through OnStatus(from, to, reason). Stop() from any state → stopped.</text>
+</svg>

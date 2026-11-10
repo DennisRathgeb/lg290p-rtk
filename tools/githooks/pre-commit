@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Fast checks on staged files only: clang-format and include guards on C++, bash -n on shell.
+set -e
+cxx=$(git diff --cached --name-only --diff-filter=ACM -- '*.h' '*.cc' || true)
+sh=$(git diff --cached --name-only --diff-filter=ACM -- '*.sh' 'tools/githooks/*' || true)
+if [ -n "$cxx" ] && command -v clang-format >/dev/null; then
+  # shellcheck disable=SC2086
+  clang-format --dry-run --Werror $cxx
+fi
+if [ -n "$cxx" ]; then python3 tools/check-header-guards.py; fi
+for f in $sh; do bash -n "$f"; done
