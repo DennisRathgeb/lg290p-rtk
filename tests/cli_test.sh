@@ -8,7 +8,11 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 coproc SIMPROC { "$SIM"; }
 read -r PORT <&"${SIMPROC[0]}"
-trap 'exec {SIMPROC[1]}>&-; wait "$SIMPROC_PID" 2>/dev/null || true' EXIT
+SIM_STDIN=${SIMPROC[1]}
+SIM_PID=$SIMPROC_PID
+# Closing the simulator's stdin makes it exit cleanly (and remove its temp dir).
+cleanup() { eval "exec ${SIM_STDIN}>&-"; wait "$SIM_PID" 2>/dev/null || true; }
+trap cleanup EXIT
 
 out=$("$LGRTK" --port "$PORT" probe --seconds 2) || fail "probe exit $?"
 grep -q "firmware: LG290P03AANR01A06S" <<<"$out" || fail "probe: no firmware line: $out"
