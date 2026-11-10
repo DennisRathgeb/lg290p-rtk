@@ -155,6 +155,10 @@ TEST(NtripTest, AuthFailureStops) {
   std::this_thread::sleep_for(500ms);
   EXPECT_EQ(caster.Connections(), 1);  // no hammering
   EXPECT_EQ(c.Status().http_status, 401);
+  // The error says what to check, not just the status.
+  EXPECT_NE(c.Status().last_error.find("check user name and password"),
+            std::string::npos)
+      << c.Status().last_error;
 }
 
 TEST(NtripTest, ReconnectsAfterDrop) {

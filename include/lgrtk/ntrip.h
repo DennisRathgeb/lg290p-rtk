@@ -27,7 +27,7 @@ enum class NtripState : uint8_t {
   kStreaming,   ///< corrections arrive
   kStalled,     ///< connected but no data for stall_after_ms (reconnects)
   kBackoff,     ///< waiting before the next attempt
-  kAuthFailed,  ///< HTTP 401: stops until Start() is called again
+  kAuthFailed,  ///< HTTP 401: no further attempts until Stop(), then Start()
   kNoPosition,  ///< send_gga is on and no position is known yet
   kStopped,     ///< Stop() was called
 };

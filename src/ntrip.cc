@@ -413,9 +413,10 @@ void NtripClient::Session() {
       status_.http_status = response->status;
     }
     if (response->status == kHttpUnauthorized) {
-      Fail("HTTP 401 Unauthorized for mountpoint '" + opt_.mountpoint +
-           "': check user name and password");
-      SetState(NtripState::kAuthFailed, "HTTP 401 Unauthorized");
+      // SetState records the reason as the last error.
+      SetState(NtripState::kAuthFailed,
+               "HTTP 401 Unauthorized for mountpoint '" + opt_.mountpoint +
+                   "': check user name and password");
       return;
     }
     if (response->status != kHttpOk) {
