@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 910 470" width="910" height="470" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <title>Waveshare LG290P GNSS RTK Module: what is connected to what</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .bg { fill: #ffffff; }
+      .pcb { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
+      .chip { fill: #ffffff; stroke: #334155; stroke-width: 1.5; }
+      .main { fill: #eef2ff; stroke: #4338ca; stroke-width: 2; }
+      .conn { fill: #fef9c3; stroke: #a16207; stroke-width: 1.5; }
+      .ext { fill: #f8fafc; stroke: #64748b; stroke-width: 1.5; stroke-dasharray: 5 3; }
+      .t { fill: #0f172a; text-anchor: middle; font-weight: bold; }
+      .s { fill: #334155; text-anchor: middle; font-size: 11.5px; }
+      .l { fill: #334155; font-size: 11.5px; }
+      .w { stroke: #475569; stroke-width: 1.6; fill: none; }
+      .n { fill: #64748b; font-size: 11px; }
+    </style>
+  </defs>
+  <rect class="bg" width="910" height="470"/>
+
+  <!-- outside the board -->
+  <rect class="ext" x="14" y="70" width="120" height="58" rx="8"/>
+  <text class="t" x="74" y="95">Linux host</text>
+  <text class="s" x="74" y="113">/dev/ttyACM0</text>
+
+  <rect class="ext" x="14" y="300" width="120" height="58" rx="8"/>
+  <text class="t" x="74" y="325">GNSS antenna</text>
+  <text class="s" x="74" y="343">e.g. Q39 helical</text>
+
+  <!-- board -->
+  <rect class="pcb" x="170" y="20" width="728" height="430" rx="16"/>
+  <text x="186" y="44" fill="#15803d" font-weight="bold">Waveshare LG290P GNSS RTK Module (connections, not to scale)</text>
+
+  <rect class="conn" x="190" y="74" width="92" height="50" rx="6"/>
+  <text class="t" x="236" y="96">USB-C</text>
+  <text class="s" x="236" y="113">J3, 5 V in</text>
+
+  <rect class="chip" x="320" y="74" width="120" height="50" rx="6"/>
+  <text class="t" x="380" y="96">WCH CH343</text>
+  <text class="s" x="380" y="113">USB ⇄ serial</text>
+
+  <rect class="chip" x="320" y="150" width="120" height="50" rx="6"/>
+  <text class="t" x="380" y="172">MP1605</text>
+  <text class="s" x="380" y="189">5 V → 3.3 V, EN</text>
+
+  <rect class="conn" x="190" y="304" width="92" height="50" rx="6"/>
+  <text class="t" x="236" y="326">SMA</text>
+  <text class="s" x="236" y="343">J4, antenna</text>
+
+  <rect class="chip" x="320" y="304" width="120" height="50" rx="6"/>
+  <text class="t" x="380" y="326">antenna feed</text>
+  <text class="s" x="380" y="343">3.3 V bias, ESD</text>
+
+  <rect class="main" x="478" y="150" width="150" height="190" rx="8"/>
+  <text class="t" x="553" y="180">Quectel</text>
+  <text class="t" x="553" y="198">LG290P (03)</text>
+  <text class="s" x="553" y="226">UART1 → CH343</text>
+  <text class="s" x="553" y="244">UART2, UART3, I²C</text>
+  <text class="s" x="553" y="262">1PPS, EVENT, RST</text>
+  <text class="s" x="553" y="280">RTK_STAT</text>
+  <text class="s" x="553" y="298">V_BCKP</text>
+  <text class="s" x="553" y="322">RF_IN</text>
+
+  <rect class="conn" x="190" y="390" width="92" height="44" rx="6"/>
+  <text class="t" x="236" y="410">J5</text>
+  <text class="s" x="236" y="426">RTC battery</text>
+
+  <rect class="chip" x="320" y="384" width="150" height="56" rx="6"/>
+  <text class="l" x="332" y="402"><tspan fill="#dc2626">●</tspan> red: power</text>
+  <text class="l" x="332" y="418"><tspan fill="#16a34a">●</tspan> green: RTK status</text>
+  <text class="l" x="332" y="434"><tspan fill="#ca8a04">●</tspan> yellow: 1PPS</text>
+
+  <rect class="chip" x="490" y="384" width="120" height="56" rx="6"/>
+  <text class="t" x="550" y="408">Key1</text>
+  <text class="s" x="550" y="425">reset button</text>
+
+  <!-- headers on the right edge -->
+  <rect class="conn" x="664" y="60" width="52" height="150" rx="6"/>
+  <text class="t" x="690" y="130">P1</text>
+  <text class="s" x="690" y="148">9 pin</text>
+  <rect class="conn" x="664" y="226" width="52" height="150" rx="6"/>
+  <text class="t" x="690" y="296">P2</text>
+  <text class="s" x="690" y="314">9 pin</text>
+
+  <rect class="conn" x="760" y="60" width="126" height="64" rx="6"/>
+  <text class="t" x="823" y="84">J1 (4 pin)</text>
+  <text class="s" x="823" y="102">UART3, 3.3 V, GND</text>
+  <rect class="conn" x="760" y="150" width="126" height="64" rx="6"/>
+  <text class="t" x="823" y="174">J2 (4 pin)</text>
+  <text class="s" x="823" y="192">I²C (reserved)</text>
+  <text class="n" x="760" y="250">P1: VCC GND 3V3 EN</text>
+  <text class="n" x="760" y="266">RXD2 TXD2 SCL SDA</text>
+  <text class="n" x="760" y="282">RTK_STAT</text>
+  <text class="n" x="760" y="310">P2: VCC GND 3V3 GND</text>
+  <text class="n" x="760" y="326">RXD3 TXD3 RST</text>
+  <text class="n" x="760" y="342">1PPS EVENT</text>
+  <text class="n" x="760" y="374">pin tables: hardware.md</text>
+
+  <!-- wires -->
+  <path class="w" d="M134,99 H190" marker-end="url(#a)" marker-start="url(#a)"/>
+  <path class="w" d="M282,99 H320" marker-end="url(#a)"/>
+  <path class="w" d="M440,99 H553 V150" marker-end="url(#a)" marker-start="url(#a)"/>
+  <text class="n" x="486" y="92">UART1, 460800 8N1</text>
+  <path class="w" d="M236,124 V175 H320" marker-end="url(#a)"/>
+  <path class="w" d="M440,175 H478" marker-end="url(#a)"/>
+  <text class="n" x="446" y="168">3V3</text>
+  <path class="w" d="M134,329 H190"/>
+  <path class="w" d="M282,329 H320"/>
+  <path class="w" d="M440,329 H478" marker-end="url(#a)"/>
+  <path class="w" d="M282,412 H300 V300 H478" marker-end="url(#a)"/>
+  <path class="w" d="M628,200 H664" marker-start="url(#a)" marker-end="url(#a)"/>
+  <path class="w" d="M628,280 H664" marker-start="url(#a)" marker-end="url(#a)"/>
+</svg>
