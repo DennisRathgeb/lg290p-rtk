@@ -143,7 +143,7 @@ std::optional<json> ControlRequest(const std::string& path, const json& request,
     *err = "lgrtkd sent an unreadable reply";
     return std::nullopt;
   }
-  return reply;
+  return std::optional<json>(std::in_place, std::move(reply));
 }
 
 }  // namespace lgrtk::daemon
