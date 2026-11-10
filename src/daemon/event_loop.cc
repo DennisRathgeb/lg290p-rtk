@@ -172,7 +172,7 @@ internal::UniqueFd ListenTcp(const std::string& host, int port,
   const int one = 1;
   setsockopt(fd.Get(), SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
   if (bind(fd.Get(), res->ai_addr, res->ai_addrlen) != 0 ||
-      listen(fd.Get(), 16) != 0) {
+      listen(fd.Get(), kListenBacklog) != 0) {
     *err = Errno("listen " + host + ":" + service);
     return {};
   }
@@ -199,7 +199,8 @@ internal::UniqueFd ListenUnix(const std::string& path, std::string* err) {
     *err = Errno("socket");
     return {};
   }
-  if (bind(fd.Get(), a.Get(), a.len) != 0 || listen(fd.Get(), 8) != 0) {
+  if (bind(fd.Get(), a.Get(), a.len) != 0 ||
+      listen(fd.Get(), kListenBacklog) != 0) {
     *err = Errno("listen " + path);
     return {};
   }
@@ -224,14 +225,8 @@ int BoundPort(int fd) {
 
 // ---- ClientSet ----
 
-ClientSet::ClientSet(EventLoop* loop, Handlers handlers, size_t cap_bytes,
-                     bool read_lines, size_t max_line, size_t max_clients)
-    : loop_(loop),
-      h_(std::move(handlers)),
-      cap_(cap_bytes),
-      read_lines_(read_lines),
-      max_line_(max_line),
-      max_clients_(max_clients) {}
+ClientSet::ClientSet(EventLoop* loop, Handlers handlers, Options options)
+    : loop_(loop), h_(std::move(handlers)), opt_(options) {}
 
 ClientSet::~ClientSet() {
   // The descriptors close with their owners; only the watches go here.
@@ -247,6 +242,17 @@ void ClientSet::AddListener(internal::UniqueFd listen_fd) {
   const int fd = listen_fd.Get();
   listeners_.push_back(std::move(listen_fd));
   loop_->Add(fd, POLLIN, [this, fd](short) { Accept(fd); });
+}
+
+int ClientSet::AddTcpListener(const std::string& host, int port,
+                              std::string* err) {
+  internal::UniqueFd fd = ListenTcp(host, port, err);
+  if (!fd) {
+    return 0;
+  }
+  const int bound = BoundPort(fd.Get());
+  AddListener(std::move(fd));
+  return bound;
 }
 
 void ClientSet::Accept(int listen_fd) {
@@ -265,7 +271,7 @@ void ClientSet::Accept(int listen_fd) {
       }
       return;  // EAGAIN, or a transient error: try on the next event
     }
-    if (clients_.size() >= max_clients_) {
+    if (clients_.size() >= opt_.max_clients) {
       continue;  // closed as `fd` goes out of scope
     }
     const Id id = next_id_++;
@@ -299,7 +305,7 @@ void ClientSet::OnEvents(Id id, short revents) {
     Close(id);
     return;
   }
-  if (n < 0 || !read_lines_) {
+  if (n < 0 || !opt_.read_lines) {
     return;
   }
   c->in.append(buf, static_cast<size_t>(n));
@@ -325,7 +331,7 @@ void ClientSet::OnEvents(Id id, short revents) {
     c = again->second.get();
   }
   c->in.erase(0, start);
-  if (c->in.size() > max_line_) {
+  if (c->in.size() > opt_.max_line) {
     Close(id);
   }
 }
@@ -336,7 +342,7 @@ void ClientSet::Send(Id id, std::string_view data) {
     return;
   }
   Client* c = it->second.get();
-  if (c->out.size() + data.size() > cap_) {
+  if (c->out.size() + data.size() > opt_.cap_bytes) {
     ++dropped_;
     Close(id);
     return;

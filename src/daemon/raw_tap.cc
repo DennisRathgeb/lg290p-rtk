@@ -2,22 +2,17 @@
 #include "daemon/raw_tap.h"
 
 #include <string_view>
-#include <utility>
 
 namespace lgrtk::daemon {
 
 RawTap::RawTap(EventLoop* loop, size_t cap_bytes)
-    : clients_(loop, ClientSet::Handlers{}, cap_bytes,
-               /*read_lines=*/false) {}
+    : clients_(
+          loop, ClientSet::Handlers{},
+          ClientSet::Options{.cap_bytes = cap_bytes, .read_lines = false}) {}
 
 bool RawTap::Listen(const std::string& host, int port, std::string* err) {
-  internal::UniqueFd fd = ListenTcp(host, port, err);
-  if (!fd) {
-    return false;
-  }
-  port_ = BoundPort(fd.Get());
-  clients_.AddListener(std::move(fd));
-  return true;
+  port_ = clients_.AddTcpListener(host, port, err);
+  return port_ != 0;
 }
 
 void RawTap::Publish(std::span<const uint8_t> bytes) {

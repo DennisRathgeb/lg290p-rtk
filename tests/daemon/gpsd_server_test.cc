@@ -72,7 +72,7 @@ class GpsdServerTest : public ::testing::Test {
     return n;
   }
 
-  size_t cap_ = 256 * 1024;
+  size_t cap_ = kClientBufferCap;
   LoopThread lt_;
   std::unique_ptr<GpsdServer> server_;
   int port_ = 0;
@@ -288,8 +288,9 @@ TEST(EventLoopTest, ClientLimitRefusesExtraClients) {
   std::unique_ptr<ClientSet> set;
   int port = 0;
   lt.Sync([&] {
-    set = std::make_unique<ClientSet>(lt.Loop(), ClientSet::Handlers{}, 1024,
-                                      true, 4096, /*max_clients=*/2);
+    set = std::make_unique<ClientSet>(
+        lt.Loop(), ClientSet::Handlers{},
+        ClientSet::Options{.cap_bytes = 1024, .max_clients = 2});
     std::string err;
     internal::UniqueFd fd = ListenTcp("127.0.0.1", 0, &err);
     ASSERT_TRUE(fd) << err;

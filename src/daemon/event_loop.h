@@ -74,30 +74,49 @@ class EventLoop {
 /// The local port of a bound TCP socket.
 int BoundPort(int fd);
 
+/// Output buffered per client before it is dropped (docs/decisions.md D24).
+inline constexpr size_t kClientBufferCap = 256 * 1024;
+/// Clients per listening socket (docs/decisions.md D24).
+inline constexpr size_t kMaxClients = 64;
+/// Longest input line; a client sending a longer one is dropped.
+inline constexpr size_t kMaxLineBytes = 4096;
+/// Pending connections per listening socket.
+inline constexpr int kListenBacklog = 16;
+
+/// Limits and input handling of a ClientSet.
+struct ClientSetOptions {
+  size_t cap_bytes = kClientBufferCap;  ///< output buffer per client
+  bool read_lines = true;               ///< false: discard all input
+  size_t max_line = kMaxLineBytes;      ///< longest input line
+  size_t max_clients = kMaxClients;     ///< further clients are closed
+};
+
 /// Clients accepted from one or more listening sockets. Input is split into
 /// lines (or discarded); output is buffered per client up to `cap_bytes`, and
 /// a client whose buffer would exceed that is disconnected, so a client that
 /// does not read never slows the daemon.
 class ClientSet {
  public:
-  using Id = uint64_t;  ///< client handle, never reused
+  using Id = uint64_t;               ///< client handle, never reused
+  using Options = ClientSetOptions;  ///< limits and input handling
   /// Callbacks; all run on the loop thread.
   struct Handlers {
     std::function<void(Id)> on_open;                    ///< accepted
     std::function<void(Id, std::string_view)> on_line;  ///< one input line
     std::function<void(Id)> on_close;                   ///< gone
   };
-  /// `read_lines` false discards everything clients send.
-  /// At most `max_clients` are connected; further ones are closed at once.
-  ClientSet(EventLoop* loop, Handlers handlers, size_t cap_bytes = 256 * 1024,
-            bool read_lines = true, size_t max_line = 4096,
-            size_t max_clients = 64);
+  /// Serves clients on `loop` with `options`.
+  ClientSet(EventLoop* loop, Handlers handlers, Options options = {});
   ~ClientSet();
   ClientSet(const ClientSet&) = delete;
   ClientSet& operator=(const ClientSet&) = delete;
 
   /// Accepts clients from `listen_fd`.
   void AddListener(internal::UniqueFd listen_fd);
+  /// Listens on host:port (0 picks a free port) and accepts clients from it.
+  /// Returns the bound port, or 0 with `err`.
+  [[nodiscard]] int AddTcpListener(const std::string& host, int port,
+                                   std::string* err);
   /// Queues `data` for client `id`; drops the client on overflow.
   void Send(Id id, std::string_view data);
   /// Disconnects a client.
@@ -121,10 +140,7 @@ class ClientSet {
 
   EventLoop* loop_;
   Handlers h_;
-  size_t cap_;
-  bool read_lines_;
-  size_t max_line_;
-  size_t max_clients_;
+  Options opt_;
   bool accept_paused_ = false;  // out of file descriptors
   std::vector<internal::UniqueFd> listeners_;
   std::map<Id, std::unique_ptr<Client>> clients_;

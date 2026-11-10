@@ -25,16 +25,11 @@ GpsdServer::GpsdServer(EventLoop* loop, std::string device, size_t cap_bytes)
                                 OnLine(id, line);
                               },
                               [this](ClientSet::Id id) { watch_.erase(id); }},
-          cap_bytes) {}
+          ClientSet::Options{.cap_bytes = cap_bytes}) {}
 
 bool GpsdServer::Listen(const std::string& host, int port, std::string* err) {
-  internal::UniqueFd fd = ListenTcp(host, port, err);
-  if (!fd) {
-    return false;
-  }
-  port_ = BoundPort(fd.Get());
-  clients_.AddListener(std::move(fd));
-  return true;
+  port_ = clients_.AddTcpListener(host, port, err);
+  return port_ != 0;
 }
 
 void GpsdServer::OnLine(ClientSet::Id id, std::string_view line) {
