@@ -100,7 +100,7 @@ Full programs: [examples/print_fixes.cc](examples/print_fixes.cc),
 `find_package(lgrtk)` after `make install`, or with `FetchContent`:
 
 ```cmake
-FetchContent_Declare(lgrtk GIT_REPOSITORY https://github.com/DennisRathgeb/lg290p-rtk GIT_TAG v0.1.0)
+FetchContent_Declare(lgrtk GIT_REPOSITORY https://github.com/DennisRathgeb/lg290p-rtk GIT_TAG v0.2.0)
 FetchContent_MakeAvailable(lgrtk)
 target_link_libraries(app PRIVATE lgrtk::lgrtk lgrtk::projection)
 ```
@@ -157,16 +157,33 @@ lgrtk ntrip run --host H --mount M --user U --password-file F
 lgrtk project --from EPSG:4937 --to EPSG:2056+5729 LAT LON H
 ```
 
+## Daemon: the receiver for every program
+
+`lgrtkd` owns the receiver and serves it system-wide: the **gpsd JSON protocol** (so `cgps`,
+QGIS, OpenCPN and Python `gps` work unchanged, with RTK fixed/float in TPV `status`), a **raw
+tap** with the untouched NMEA + RTCM bytes, a **chrony** time source, and a control socket for
+`lgrtk ctl`. It ships with a systemd unit (`Type=notify`, watchdog, hardened), a udev rule
+(`/dev/lg290p0`) and a PKGBUILD.
+
+```sh
+sudo systemctl enable --now lgrtkd
+lgrtk ctl status
+printf '?WATCH={"enable":true,"json":true};\n' | nc 127.0.0.1 2947
+```
+
+Configuration, the gpsd field mapping, chrony and troubleshooting: [docs/daemon.md](docs/daemon.md).
+
 ## Project layout
 
 | Path | Contents |
 |---|---|
 | `include/lgrtk/` | public headers (documented, `make docs`) |
-| `src/` | library |
-| `apps/lgrtk/` | CLI |
+| `src/` | library; `src/daemon/` the daemon's internals (not installed) |
+| `apps/lgrtk/`, `apps/lgrtkd/` | CLI, daemon |
+| `packaging/` | systemd unit, udev rule, sysusers, example `lgrtkd.toml`, PKGBUILD |
 | `tests/` | GoogleTest suite; `tests/sim/` simulated LG290P on a pseudo-terminal and a fake NTRIP caster |
 | `examples/` | example programs |
-| `docs/` | [hardware guide](docs/hardware.md), [design](docs/design.md), [decisions](docs/decisions.md), [plan](docs/plan.md), diagrams |
+| `docs/` | [hardware guide](docs/hardware.md), [design](docs/design.md), [daemon](docs/daemon.md), [decisions](docs/decisions.md), plans ([M1](docs/plan.md), [M2](docs/plan-m2.md)), diagrams |
 
 ## Development
 
@@ -176,11 +193,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Status and roadmap
 
-- **v0.1.0** (this): library, CLI, NTRIP client, projection. Verified on the bench (identification,
+- **v0.1.0**: library, CLI, NTRIP client, projection. Verified on the bench (identification,
   streaming, stale-byte handling); RTK with a real caster pending the login.
-- **v0.2.0**: `lgrtkd` daemon speaking the gpsd JSON protocol (so `cgps`, QGIS and every gpsd
-  client work), raw stream tap, chrony time source, udev rule, systemd unit, PKGBUILD, NTRIP over
-  TLS, NTRIP server for an own base station.
+- **v0.2.0** (this): `lgrtkd` daemon (gpsd JSON, raw tap, chrony, control socket, `lgrtk ctl`),
+  systemd unit, udev rule, sysusers, PKGBUILD. Tested against the simulated receiver; the bench
+  test with `cgps` is next.
+- **later**: NTRIP over TLS, NTRIP server for an own base station, PPS time, `OnSatellites` in the
+  library (see [docs/decisions.md](docs/decisions.md) D29).
 
 ## Licence
 

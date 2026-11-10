@@ -1,0 +1,39 @@
+[Unit]
+Description=LG290P RTK GNSS daemon (gpsd protocol)
+Documentation=https://github.com/DennisRathgeb/lg290p-rtk/blob/main/docs/daemon.md
+After=network.target
+
+[Service]
+Type=notify
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/lgrtkd --config @LGRTK_SYSCONFDIR@/lgrtk/lgrtkd.toml
+Restart=on-failure
+RestartSec=2
+WatchdogSec=10
+User=lgrtk
+Group=lgrtk
+RuntimeDirectory=lgrtkd
+RuntimeDirectoryMode=0755
+UMask=0007
+# NTRIP password: put it in @LGRTK_SYSCONFDIR@/lgrtk/ntrip-password (mode 0600, root)
+# and leave ntrip.password_file empty; systemd hands it to the daemon.
+LoadCredential=ntrip-password:@LGRTK_SYSCONFDIR@/lgrtk/ntrip-password
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+DevicePolicy=closed
+DeviceAllow=char-ttyACM rw
+DeviceAllow=char-ttyUSB rw
+DeviceAllow=char-ttyS rw
+
+[Install]
+WantedBy=multi-user.target

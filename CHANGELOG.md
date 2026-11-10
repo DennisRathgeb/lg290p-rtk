@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## v0.2.0 (2026-11-10)
+
+The daemon: the receiver for every program on the machine.
+
+- `lgrtkd`: one receiver plus optional NTRIP, served over the **gpsd JSON protocol** (VERSION,
+  WATCH, POLL, DEVICES; TPV with RTK fixed/float status, GST, SKY), a **raw byte tap**, a
+  **chrony SOCK** refclock and a **control socket**. One event-loop thread; slow clients are
+  dropped, never waited for. Clients stay connected across unplugging.
+- `lgrtk ctl status | reset KIND | apply-default` talks to a running daemon.
+- TOML configuration with strict keys (`lgrtkd --check-config`), NTRIP password from a file or a
+  systemd credential.
+- systemd unit (`Type=notify`, watchdog, hardening), udev rule (`/dev/lg290p0`, ModemManager off),
+  sysusers file, PKGBUILD, CMake install of all of them.
+- Simulator sends GSA/GSV; end-to-end daemon test (gpsd client, raw tap, ctl, unplug/replug,
+  SIGTERM) in CI.
+- README hero photo of the module with the Q39 antenna; board diagram and pinout.
+
 ## v0.1.0 (2026-11-10)
 
 First release: library, CLI, NTRIP, projection.

@@ -2,4 +2,4 @@
 
 #include <gtest/gtest.h>
 
-TEST(VersionTest, MatchesProject) { EXPECT_STREQ(lgrtk::kVersion, "0.1.0"); }
+TEST(VersionTest, MatchesProject) { EXPECT_STREQ(lgrtk::kVersion, "0.2.0"); }

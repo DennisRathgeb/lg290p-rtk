@@ -47,7 +47,7 @@ class Daemon {
   void StopDevices();
   void OnFix(const Fix& fix, int64_t arrival_realtime_ns);
   void OnState(const StatusEvent& ev);
-  nlohmann::json StatusJson() const;
+  [[nodiscard]] nlohmann::json StatusJson() const;
   void UpdateSystemdStatus() const;
 
   DaemonConfig cfg_;

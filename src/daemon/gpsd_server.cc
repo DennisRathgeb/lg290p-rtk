@@ -14,8 +14,7 @@ nlohmann::ordered_json Embedded(const std::string& line) {
 }  // namespace
 
 GpsdServer::GpsdServer(EventLoop* loop, std::string device, size_t cap_bytes)
-    : loop_(loop),
-      device_(std::move(device)),
+    : device_(std::move(device)),
       clients_(
           loop,
           ClientSet::Handlers{[this](ClientSet::Id id) {

@@ -43,9 +43,8 @@ class GpsdServer {
  private:
   void OnLine(ClientSet::Id id, std::string_view line);
   void ToWatchers(bool json, bool nmea, std::string_view data);
-  std::string PollJson() const;
+  [[nodiscard]] std::string PollJson() const;
 
-  EventLoop* loop_;
   std::string device_;
   ClientSet clients_;
   std::map<ClientSet::Id, Watch> watch_;

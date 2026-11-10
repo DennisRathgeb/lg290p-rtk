@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: deps
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libgtest-dev libproj-dev proj-data
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libgtest-dev libproj-dev proj-data nlohmann-json3-dev
       - name: build (Debug, ASan/UBSan, -Werror)
         run: CXX=${{ matrix.cxx }} make build
       - name: test
@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: deps
         run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libgtest-dev libproj-dev doxygen shellcheck
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libgtest-dev libproj-dev nlohmann-json3-dev doxygen shellcheck
           pip install --user clang-format==22.1.8 clang-tidy==22.1.8
       - name: format, include guards, shell
         run: make lint

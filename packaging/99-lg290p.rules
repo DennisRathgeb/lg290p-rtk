@@ -1,0 +1,7 @@
+# Waveshare LG290P GNSS RTK Module: WCH CH343 USB-serial bridge (1a86:55d3).
+# Gives the receiver a stable name (/dev/lg290p0 for ttyACM0, ...), keeps
+# ModemManager from probing it and lets systemd units depend on it.
+# Note: other boards with a CH343 share this USB id; add ATTRS{serial}=="..."
+# (see `udevadm info -a /dev/ttyACM0`) if you have more than one.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", \
+  SYMLINK+="lg290p%n", ENV{ID_MM_DEVICE_IGNORE}="1", TAG+="systemd"
