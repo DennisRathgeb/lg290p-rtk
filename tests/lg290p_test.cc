@@ -168,6 +168,21 @@ TEST(Lg290pTest, PlanConfigSkipsUnknownCurrentValues) {
   ASSERT_EQ(unknown.size(), 2u);
 }
 
+TEST(Lg290pTest, PlanConfigReportsOutOfRangeWantedValues) {
+  ReceiverConfig want;
+  want.fix_interval_ms = 20;       // below 50 ms
+  want.elevation_mask_deg = 95.0;  // above 90 deg
+  ReceiverConfig have;
+  have.fix_interval_ms = 100;
+  have.elevation_mask_deg = 5.0;
+  std::vector<std::string> unknown;
+  EXPECT_TRUE(PlanConfig(want, have, &unknown).empty());
+  ASSERT_EQ(unknown.size(), 2u);
+  EXPECT_NE(unknown[0].find("PQTMCFGFIXRATE"), std::string::npos);
+  EXPECT_NE(unknown[0].find("out of range"), std::string::npos);
+  EXPECT_NE(unknown[1].find("PQTMCFGELETHD"), std::string::npos);
+}
+
 TEST(Lg290pTest, RtkReplyWithoutTimeout) {
   ReceiverConfig have;
   std::array<std::string_view, nmea::kMaxFields> f{};

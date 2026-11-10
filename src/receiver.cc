@@ -540,7 +540,7 @@ bool Lg290pReceiver::Configure() {
         names += (names.empty() ? "" : ", ") + u;
       }
       std::lock_guard lk(mu_);
-      status_.last_error = "could not read " + names + "; left unchanged";
+      status_.last_error = "left unchanged (unreadable or invalid): " + names;
     }
     if (plan.empty()) {
       return true;

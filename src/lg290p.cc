@@ -354,16 +354,20 @@ std::vector<Command> PlanConfig(const ReceiverConfig& want,
     }
   };
   std::vector<Command> out;
-  auto add = [&](std::optional<Command> c) {
+  // A wanted value outside the documented range has no command: reported
+  // like an unreadable setting, the receiver keeps its value.
+  auto add = [&](std::optional<Command> c, std::string_view name) {
     if (c) {
       out.push_back(std::move(*c));
+    } else {
+      skip(std::string(name) + " (wanted value out of range)");
     }
   };
   if (want.fix_interval_ms) {
     if (!have.fix_interval_ms) {
       skip("PQTMCFGFIXRATE");
     } else if (want.fix_interval_ms != have.fix_interval_ms) {
-      add(SetFixRate(*want.fix_interval_ms));
+      add(SetFixRate(*want.fix_interval_ms), "PQTMCFGFIXRATE");
     }
   }
   for (const auto& m : want.message_rates) {
@@ -394,7 +398,7 @@ std::vector<Command> PlanConfig(const ReceiverConfig& want,
       const bool same_timeout = have.rtk->timeout_s == 0 ||
                                 want.rtk->timeout_s == have.rtk->timeout_s;
       if (!same_modes || !same_timeout) {
-        add(SetRtk(*want.rtk));
+        add(SetRtk(*want.rtk), "PQTMCFGRTK");
       }
     }
   }
@@ -409,14 +413,14 @@ std::vector<Command> PlanConfig(const ReceiverConfig& want,
     if (!have.elevation_mask_deg) {
       skip("PQTMCFGELETHD");
     } else if (!SameTenth(want.elevation_mask_deg, have.elevation_mask_deg)) {
-      add(SetElevationMask(*want.elevation_mask_deg));
+      add(SetElevationMask(*want.elevation_mask_deg), "PQTMCFGELETHD");
     }
   }
   if (want.cnr_mask_dbhz) {
     if (!have.cnr_mask_dbhz) {
       skip("PQTMCFGCNRTHD");
     } else if (!SameTenth(want.cnr_mask_dbhz, have.cnr_mask_dbhz)) {
-      add(SetCnrMask(*want.cnr_mask_dbhz));
+      add(SetCnrMask(*want.cnr_mask_dbhz), "PQTMCFGCNRTHD");
     }
   }
   if (want.receiver_mode) {
@@ -430,7 +434,7 @@ std::vector<Command> PlanConfig(const ReceiverConfig& want,
     if (!have.pps) {
       skip("PQTMCFGPPS");
     } else if (want.pps != have.pps) {
-      add(SetPps(*want.pps));
+      add(SetPps(*want.pps), "PQTMCFGPPS");
     }
   }
   if (out.empty()) {
