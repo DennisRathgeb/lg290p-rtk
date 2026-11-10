@@ -2,9 +2,10 @@
 #include "lgrtk/lg290p.h"
 
 #include <algorithm>
-#include <charconv>
 #include <cmath>
 #include <cstdio>
+
+#include "internal/text.h"
 
 namespace lgrtk::lg290p {
 
@@ -47,14 +48,16 @@ std::string MsgBody(char rw, std::string_view msg, int rate, int version) {
   return b;
 }
 
-bool ToInt(const std::string& s, int& out) {
-  const auto r = std::from_chars(s.data(), s.data() + s.size(), out);
-  return r.ec == std::errc{} && r.ptr == s.data() + s.size();
-}
-
-bool ToDouble(const std::string& s, double& out) {
-  const auto r = std::from_chars(s.data(), s.data() + s.size(), out);
-  return r.ec == std::errc{} && r.ptr == s.data() + s.size();
+// Reply and OwnedReply differ only in how they hold their strings.
+template <class R>
+bool MatchesReply(const Command& cmd, const R& reply) noexcept {
+  if (cmd.reply_to.empty() || reply.command != cmd.reply_to) {
+    return false;
+  }
+  if (!reply.ok || cmd.match_value.empty() || reply.values.empty()) {
+    return true;
+  }
+  return reply.values[0] == cmd.match_value;
 }
 
 bool SameTenth(const std::optional<double>& a, const std::optional<double>& b) {
@@ -66,12 +69,8 @@ constexpr int kBauds[] = {9600, 115200, 230400, 460800, 921600, 3000000};
 }  // namespace
 
 std::string BuildCommand(std::string_view body) {
-  unsigned sum = 0;
-  for (char c : body) {
-    sum ^= static_cast<unsigned char>(c);
-  }
   char tail[8];
-  std::snprintf(tail, sizeof tail, "*%02X\r\n", sum & 0xFF);
+  std::snprintf(tail, sizeof tail, "*%02X\r\n", internal::NmeaXor(body));
   std::string s = "$";
   s += body;
   s += tail;
@@ -79,23 +78,11 @@ std::string BuildCommand(std::string_view body) {
 }
 
 bool Matches(const Command& cmd, const nmea::Reply& reply) noexcept {
-  if (cmd.reply_to.empty() || reply.command != cmd.reply_to) {
-    return false;
-  }
-  if (!reply.ok || cmd.match_value.empty() || reply.values.empty()) {
-    return true;
-  }
-  return reply.values[0] == cmd.match_value;
+  return MatchesReply(cmd, reply);
 }
 
 bool Matches(const Command& cmd, const nmea::OwnedReply& reply) noexcept {
-  if (cmd.reply_to.empty() || reply.command != cmd.reply_to) {
-    return false;
-  }
-  if (!reply.ok || cmd.match_value.empty() || reply.values.empty()) {
-    return true;
-  }
-  return reply.values[0] == cmd.match_value;
+  return MatchesReply(cmd, reply);
 }
 
 ReceiverConfig DefaultRoverConfig() {
@@ -305,7 +292,7 @@ void ApplyReadReply(const nmea::OwnedReply& r, ReceiverConfig& have) {
   std::vector<int> n(v.size(), 0);
   std::vector<bool> is_int(v.size(), false);
   for (size_t i = 0; i < v.size(); ++i) {
-    is_int[i] = ToInt(v[i], n[i]);
+    is_int[i] = internal::ParseNumber(v[i], n[i]);
   }
   auto all_int = [&](size_t count, size_t from = 0) {
     if (v.size() < from + count) {
@@ -341,12 +328,12 @@ void ApplyReadReply(const nmea::OwnedReply& r, ReceiverConfig& have) {
                                          n[3] != 0, n[4] != 0, n[5] != 0};
   } else if (c == "PQTMCFGELETHD") {
     double d = 0;
-    if (ToDouble(v[0], d)) {
+    if (internal::ParseNumber(v[0], d)) {
       have.elevation_mask_deg = d;
     }
   } else if (c == "PQTMCFGCNRTHD") {
     double d = 0;
-    if (ToDouble(v[0], d)) {
+    if (internal::ParseNumber(v[0], d)) {
       have.cnr_mask_dbhz = d;
     }
   } else if (c == "PQTMCFGRCVRMODE" && all_int(1) && (n[0] == 1 || n[0] == 2)) {
