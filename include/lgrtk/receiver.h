@@ -2,24 +2,29 @@
 #ifndef LGRTK_RECEIVER_H_
 #define LGRTK_RECEIVER_H_
 
+// clang-format off
 /// @file receiver.h
 /// The LG290P driver: an explicit state machine on its own I/O thread.
+/// docs/architecture.md describes each state; docs/state-machine.svg draws it.
 ///
 /// @verbatim
-///  kDisconnected -> kOpening -> kIdentifying -> kConfiguring -> kStreaming <->
-///  kStale
-///        ^             | fail        | no reply at any baud        | | | v v
-///        v            v
-///        +-------- kReconnecting <---+-- port vanished / I/O
-///        error-+------------+
-///                                     kFault (a command was refused; waits for
-///                                     Stop)
+///  kDisconnected -> kOpening -> kIdentifying -> kConfiguring -> kStreaming <-> kStale
+///                    ^   |          |              |              |             |
+///                    |   | fail     | port lost    | port lost    +- port lost -+
+///                    |   v          v              v              v
+///                    +-- kReconnecting <-----------+--------------+
+///
+///  kStreaming -> kIdentifying (the receiver restarted on its own: UTC jumped back)
+///  kIdentifying (no reply at any baud), kConfiguring (a command refused)
+///      -> kFault (waits for Stop())
+///  any state -> kStopped (Stop())
 /// @endverbatim
 ///
 /// Every transition is reported through OnStatus. Fixes arrive through
 /// OnFix; LatestFix() gives the newest one to pollers, and Status() says how
 /// old it is, so a consumer never mistakes the last fix before an unplug for
 /// a live one.
+// clang-format on
 
 #include <atomic>
 #include <condition_variable>
@@ -47,7 +52,7 @@
 
 namespace lgrtk {
 
-/// Driver states (see the diagram in receiver.h).
+/// Driver states (diagram in the file description, docs/state-machine.svg).
 enum class State : uint8_t {
   kDisconnected,  ///< not started yet / port never opened
   kOpening,       ///< opening the tty
@@ -149,21 +154,25 @@ class Lg290pReceiver final : public CorrectionSink {
   Lg290pReceiver(const Lg290pReceiver&) = delete;
   Lg290pReceiver& operator=(const Lg290pReceiver&) = delete;
 
-  void OnFix(std::function<void(const Fix&)> cb) {
-    on_fix_ = std::move(cb);
-  }  ///< every epoch
+  /// Called with every epoch.
+  void OnFix(std::function<void(const Fix&)> cb) { on_fix_ = std::move(cb); }
+  /// Called on every state transition.
   void OnStatus(std::function<void(const StatusEvent&)> cb) {
     on_status_ = std::move(cb);
-  }  ///< transitions
+  }
+  /// Called with every NMEA sentence.
   void OnNmea(std::function<void(std::string_view)> cb) {
     on_nmea_ = std::move(cb);
-  }  ///< every sentence
+  }
+  /// Called with every RTCM frame the receiver sends (raw observations, base
+  /// output).
   void OnRtcm(std::function<void(std::span<const uint8_t>)> cb) {
     on_rtcm_ = std::move(cb);
-  }  ///< RTCM out (raw obs, base)
+  }
+  /// Called with every chunk of bytes read from the port.
   void OnRaw(std::function<void(std::span<const uint8_t>)> cb) {
     on_raw_ = std::move(cb);
-  }  ///< every byte read
+  }
 
   /// Starts the I/O thread. False if already running.
   bool Start();
