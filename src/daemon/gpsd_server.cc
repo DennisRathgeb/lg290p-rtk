@@ -28,12 +28,12 @@ GpsdServer::GpsdServer(EventLoop* loop, std::string device, size_t cap_bytes)
           cap_bytes) {}
 
 bool GpsdServer::Listen(const std::string& host, int port, std::string* err) {
-  const int fd = ListenTcp(host, port, err);
-  if (fd < 0) {
+  internal::UniqueFd fd = ListenTcp(host, port, err);
+  if (!fd) {
     return false;
   }
-  port_ = BoundPort(fd);
-  clients_.AddListener(fd);
+  port_ = BoundPort(fd.Get());
+  clients_.AddListener(std::move(fd));
   return true;
 }
 

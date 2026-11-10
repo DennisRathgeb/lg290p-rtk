@@ -43,12 +43,12 @@ ControlServer::~ControlServer() {
 }
 
 bool ControlServer::Listen(const std::string& path, std::string* err) {
-  const int fd = ListenUnix(path, err);
-  if (fd < 0) {
+  internal::UniqueFd fd = ListenUnix(path, err);
+  if (!fd) {
     return false;
   }
   path_ = path;
-  clients_.AddListener(fd);
+  clients_.AddListener(std::move(fd));
   return true;
 }
 

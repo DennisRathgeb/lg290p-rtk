@@ -2,14 +2,14 @@
 #include "daemon/sd_notify.h"
 
 #include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
 
 #include <charconv>
-#include <cstddef>
 #include <cstdlib>
 #include <cstring>
-#include <string>
+#include <string_view>
+
+#include "internal/unique_fd.h"
+#include "internal/unix_socket.h"
 
 namespace lgrtk::daemon {
 
@@ -19,27 +19,19 @@ void SdNotify(std::string_view state) {
   if (env == nullptr || env[0] == '\0') {
     return;
   }
-  const std::string path(env);
-  sockaddr_un a{};
-  if (path.size() >= sizeof a.sun_path || (path[0] != '/' && path[0] != '@')) {
+  const std::string_view path(env);
+  internal::UnixAddress a;
+  // Only absolute paths and abstract names ("@...") are valid.
+  if ((path[0] != '/' && path[0] != '@') ||
+      !internal::MakeUnixAddress(path, a)) {
     return;
   }
-  a.sun_family = AF_UNIX;
-  std::memcpy(a.sun_path, path.data(), path.size());
-  auto len =
-      static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) + path.size());
-  if (path[0] == '@') {
-    a.sun_path[0] = '\0';  // abstract namespace
-  } else {
-    ++len;  // include the terminating NUL
-  }
-  const int fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-  if (fd < 0) {
+  const internal::UniqueFd fd(socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+  if (!fd) {
     return;
   }
-  (void)!sendto(fd, state.data(), state.size(), MSG_NOSIGNAL,
-                reinterpret_cast<sockaddr*>(&a), len);
-  close(fd);
+  (void)!sendto(fd.Get(), state.data(), state.size(), MSG_NOSIGNAL, a.Get(),
+                a.len);
 }
 
 int64_t WatchdogPeriodMs() {

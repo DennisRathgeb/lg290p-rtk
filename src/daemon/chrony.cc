@@ -2,11 +2,6 @@
 #include "daemon/chrony.h"
 
 #include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
-
-#include <cstring>
-#include <utility>
 
 #include "daemon/gpsd_json.h"
 
@@ -39,25 +34,16 @@ std::optional<ChronySample> MakeChronySample(const Fix& fix,
   return s;
 }
 
-ChronySock::ChronySock(std::string path) : path_(std::move(path)) {
-  fd_ = socket(AF_UNIX, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-}
-
-ChronySock::~ChronySock() {
-  if (fd_ >= 0) {
-    close(fd_);
-  }
-}
+ChronySock::ChronySock(const std::string& path)
+    : fd_(socket(AF_UNIX, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0)),
+      addr_ok_(internal::MakeUnixAddress(path, addr_)) {}
 
 void ChronySock::Send(const ChronySample& s) {
-  sockaddr_un a{};
-  if (fd_ < 0 || path_.size() >= sizeof a.sun_path) {
+  if (!fd_ || !addr_ok_) {
     return;
   }
-  a.sun_family = AF_UNIX;
-  std::memcpy(a.sun_path, path_.c_str(), path_.size() + 1);
-  if (sendto(fd_, &s, sizeof s, MSG_NOSIGNAL, reinterpret_cast<sockaddr*>(&a),
-             sizeof a) == static_cast<ssize_t>(sizeof s)) {
+  if (sendto(fd_.Get(), &s, sizeof s, MSG_NOSIGNAL, addr_.Get(), addr_.len) ==
+      static_cast<ssize_t>(sizeof s)) {
     ++sent_;
   }
 }

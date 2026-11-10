@@ -13,6 +13,7 @@
 
 #include "daemon/gpsd_json.h"
 #include "daemon/sd_notify.h"
+#include "internal/unique_fd.h"
 #include "lgrtk/lg290p.h"
 #include "lgrtk/version.h"
 
@@ -248,17 +249,17 @@ nlohmann::json Daemon::StatusJson() const {
 }
 
 void Daemon::Run(bool handle_signals) {
-  int sfd = -1;
+  internal::UniqueFd sfd;
   if (handle_signals) {
     sigset_t set;
     sigemptyset(&set);
     sigaddset(&set, SIGTERM);
     sigaddset(&set, SIGINT);
-    sfd = signalfd(-1, &set, SFD_NONBLOCK | SFD_CLOEXEC);
-    if (sfd >= 0) {
-      loop_.Add(sfd, POLLIN, [this, sfd](short) {
+    sfd.Reset(signalfd(-1, &set, SFD_NONBLOCK | SFD_CLOEXEC));
+    if (sfd) {
+      loop_.Add(sfd.Get(), POLLIN, [this, fd = sfd.Get()](short) {
         signalfd_siginfo si{};
-        while (read(sfd, &si, sizeof si) == sizeof si) {
+        while (read(fd, &si, sizeof si) == sizeof si) {
           Log("lgrtkd: signal " + std::to_string(si.ssi_signo) +
               ", shutting down");
           loop_.Quit();
@@ -267,9 +268,8 @@ void Daemon::Run(bool handle_signals) {
     }
   }
   loop_.Run();
-  if (sfd >= 0) {
-    loop_.Remove(sfd);
-    close(sfd);
+  if (sfd) {
+    loop_.Remove(sfd.Get());
   }
 }
 

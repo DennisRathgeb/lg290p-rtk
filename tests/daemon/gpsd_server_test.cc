@@ -291,10 +291,10 @@ TEST(EventLoopTest, ClientLimitRefusesExtraClients) {
     set = std::make_unique<ClientSet>(lt.Loop(), ClientSet::Handlers{}, 1024,
                                       true, 4096, /*max_clients=*/2);
     std::string err;
-    const int fd = ListenTcp("127.0.0.1", 0, &err);
-    ASSERT_GE(fd, 0) << err;
-    port = BoundPort(fd);
-    set->AddListener(fd);
+    internal::UniqueFd fd = ListenTcp("127.0.0.1", 0, &err);
+    ASSERT_TRUE(fd) << err;
+    port = BoundPort(fd.Get());
+    set->AddListener(std::move(fd));
   });
   LineClient a;
   LineClient b;
@@ -349,12 +349,12 @@ TEST(EventLoopTest, UnixListenerReplacesStaleSocket) {
   const std::string path =
       "/tmp/lgrtk_test_" + std::to_string(getpid()) + ".sock";
   std::string err;
-  int a = ListenUnix(path, &err);
-  ASSERT_GE(a, 0) << err;
-  close(a);  // leaves the socket file behind, like a crashed daemon
-  int b = ListenUnix(path, &err);
-  ASSERT_GE(b, 0) << err;
-  close(b);
+  {
+    const internal::UniqueFd a = ListenUnix(path, &err);
+    ASSERT_TRUE(a) << err;
+  }  // closed: leaves the socket file behind, like a crashed daemon
+  const internal::UniqueFd b = ListenUnix(path, &err);
+  ASSERT_TRUE(b) << err;
   unlink(path.c_str());
 }
 

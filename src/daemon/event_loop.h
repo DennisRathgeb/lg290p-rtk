@@ -16,17 +16,14 @@
 #include <string_view>
 #include <vector>
 
+#include "internal/unique_fd.h"
+
 namespace lgrtk::daemon {
 
 /// poll()-based loop. Everything runs on the thread that calls Run(); only
 /// Post() and Quit() may be called from other threads.
 class EventLoop {
  public:
-  EventLoop() = default;
-  ~EventLoop();
-  EventLoop(const EventLoop&) = delete;
-  EventLoop& operator=(const EventLoop&) = delete;
-
   /// Creates the wake-up eventfd. Must succeed before anything else.
   bool Init(std::string* err);
   /// Watches `fd` for `events` (POLLIN/POLLOUT); `cb` gets the revents.
@@ -58,7 +55,7 @@ class EventLoop {
   void Wake();
   void DrainPosted();
 
-  int wake_fd_ = -1;
+  internal::UniqueFd wake_fd_;
   std::map<int, Watch> watches_;
   uint64_t gen_ = 0;
   std::vector<Timer> timers_;
@@ -68,10 +65,12 @@ class EventLoop {
 };
 
 /// A non-blocking TCP listening socket on host:port (port 0 picks a free
-/// one); -1 and `err` on failure.
-int ListenTcp(const std::string& host, int port, std::string* err);
+/// one); an invalid fd and `err` on failure.
+[[nodiscard]] internal::UniqueFd ListenTcp(const std::string& host, int port,
+                                           std::string* err);
 /// A non-blocking Unix stream listening socket; replaces a stale socket file.
-int ListenUnix(const std::string& path, std::string* err);
+[[nodiscard]] internal::UniqueFd ListenUnix(const std::string& path,
+                                            std::string* err);
 /// The local port of a bound TCP socket.
 int BoundPort(int fd);
 
@@ -97,8 +96,8 @@ class ClientSet {
   ClientSet(const ClientSet&) = delete;
   ClientSet& operator=(const ClientSet&) = delete;
 
-  /// Accepts clients from `listen_fd` (takes ownership).
-  void AddListener(int listen_fd);
+  /// Accepts clients from `listen_fd`.
+  void AddListener(internal::UniqueFd listen_fd);
   /// Queues `data` for client `id`; drops the client on overflow.
   void Send(Id id, std::string_view data);
   /// Disconnects a client.
@@ -112,7 +111,7 @@ class ClientSet {
 
  private:
   struct Client {
-    int fd;
+    internal::UniqueFd fd;
     std::string in;
     std::string out;
   };
@@ -127,7 +126,7 @@ class ClientSet {
   size_t max_line_;
   size_t max_clients_;
   bool accept_paused_ = false;  // out of file descriptors
-  std::vector<int> listeners_;
+  std::vector<internal::UniqueFd> listeners_;
   std::map<Id, std::unique_ptr<Client>> clients_;
   Id next_id_ = 1;
   uint64_t dropped_ = 0;
