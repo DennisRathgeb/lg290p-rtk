@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 
+#include "daemon/control_client.h"
 #include "daemon/net_util.h"
 
 namespace lgrtk::daemon {

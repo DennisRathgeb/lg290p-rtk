@@ -26,7 +26,7 @@
 #include "lgrtk/receiver.h"
 #include "lgrtk/version.h"
 #ifdef LGRTK_HAVE_CTL
-#include "daemon/control.h"
+#include "daemon/control_client.h"
 #endif
 #ifdef LGRTK_HAVE_PROJ
 #include "lgrtk/projection.h"
@@ -718,14 +718,15 @@ int CmdProject(Args& a) {
 #ifdef LGRTK_HAVE_CTL
 // `lgrtk ctl ...`: one request to lgrtkd's control socket.
 int CmdCtl(Args& a) {
+  namespace d = lgrtk::daemon;
   const std::string sock =
-      a.Option("--socket").value_or("/run/lgrtkd/control.sock");
+      a.Option("--socket").value_or(d::kDefaultControlSocket);
   const std::string sub = a.Next();
   nlohmann::json req;
-  if (sub == "status" || sub == "apply-default") {
-    req = {{"cmd", sub}};
-  } else if (sub == "reset") {
-    req = {{"cmd", "reset"}, {"kind", a.Next()}};
+  if (sub == d::kCmdStatus || sub == d::kCmdApplyDefault) {
+    req = {{d::kFieldCmd, sub}};
+  } else if (sub == d::kCmdReset) {
+    req = {{d::kFieldCmd, d::kCmdReset}, {d::kFieldKind, a.Next()}};
   } else {
     return Usage("ctl: expected status, reset KIND or apply-default");
   }
@@ -738,13 +739,13 @@ int CmdCtl(Args& a) {
     std::cerr << "lgrtk: " << err << "\n";
     return kRuntime;
   }
-  if (!reply->value("ok", false)) {
-    std::cerr << "lgrtk: " << reply->value("error", std::string("failed"))
-              << "\n";
+  if (!reply->value(d::kFieldOk, false)) {
+    std::cerr << "lgrtk: "
+              << reply->value(d::kFieldError, std::string("failed")) << "\n";
     return kRuntime;
   }
   for (const auto& [key, value] : reply->items()) {
-    if (key == "ok") {
+    if (key == d::kFieldOk) {
       continue;
     }
     std::cout << key << ": "

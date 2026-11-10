@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 
+#include "daemon/control_protocol.h"
 #include "lgrtk/receiver.h"
 
 namespace lgrtk::daemon {
@@ -31,7 +32,7 @@ struct DaemonConfig {
   std::string gpsd_listen = "127.0.0.1:2947";  ///< `[gpsd] listen`
   std::string raw_listen;                      ///< `[raw] listen`; "" = off
   std::string chrony_sock;                     ///< `[chrony] sock`; "" = off
-  std::string control_sock = "/run/lgrtkd/control.sock";  ///< `[control] sock`
+  std::string control_sock = kDefaultControlSocket;  ///< `[control] sock`
   std::string device_name;  ///< gpsd "device"; defaults to receiver.port
   NtripSection ntrip;       ///< `[ntrip]`
 };

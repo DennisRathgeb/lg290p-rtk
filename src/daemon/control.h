@@ -1,17 +1,15 @@
 // Copyright 2026 Dennis Rathgeb. SPDX-License-Identifier: MIT
 /// @file
-/// lgrtkd's control socket: one JSON object per line in each direction.
-/// Requests: `{"cmd":"status"}`, `{"cmd":"reset","kind":"hot|warm|cold|soft"}`,
-/// `{"cmd":"apply-default"}`. Replies carry `"ok"` and, on failure, `"error"`.
+/// lgrtkd's control socket, server side (protocol: control_protocol.h).
 #ifndef LGRTK_SRC_DAEMON_CONTROL_H_
 #define LGRTK_SRC_DAEMON_CONTROL_H_
 
 #include <functional>
 #include <nlohmann/json.hpp>
-#include <optional>
 #include <string>
 #include <string_view>
 
+#include "daemon/control_protocol.h"
 #include "daemon/event_loop.h"
 
 namespace lgrtk::daemon {
@@ -43,13 +41,6 @@ class ControlServer {
   ClientSet clients_;
   std::string path_;
 };
-
-/// Client side: sends `request` to the daemon at `path` and waits up to
-/// `timeout_ms` for the reply. nullopt with `err` when the daemon cannot be
-/// reached or answers garbage.
-[[nodiscard]] std::optional<nlohmann::json> ControlRequest(
-    const std::string& path, const nlohmann::json& request, int timeout_ms,
-    std::string* err);
 
 }  // namespace lgrtk::daemon
 
