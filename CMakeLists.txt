@@ -87,13 +87,24 @@ if(LGRTK_BUILD_DAEMON)
 endif()
 
 if(LGRTK_BUILD_APPS)
-  add_executable(lgrtk_cli apps/lgrtk/main.cc)
+  add_executable(lgrtk_cli
+    apps/lgrtk/main.cc
+    apps/lgrtk/args.cc
+    apps/lgrtk/format.cc
+    apps/lgrtk/session.cc
+    apps/lgrtk/cmd_monitor.cc
+    apps/lgrtk/cmd_config.cc
+    apps/lgrtk/cmd_ntrip.cc
+    apps/lgrtk/cmd_project.cc
+  )
   set_target_properties(lgrtk_cli PROPERTIES OUTPUT_NAME lgrtk)
+  target_include_directories(lgrtk_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(lgrtk_cli PRIVATE lgrtk lgrtk_warnings)
   if(LGRTK_HAVE_PROJ)
     target_link_libraries(lgrtk_cli PRIVATE lgrtk::projection)
   endif()
   if(LGRTK_BUILD_DAEMON)
+    target_sources(lgrtk_cli PRIVATE apps/lgrtk/cmd_ctl.cc)
     target_link_libraries(lgrtk_cli PRIVATE lgrtkd_ctl)
     target_compile_definitions(lgrtk_cli PRIVATE LGRTK_HAVE_CTL=1)
   endif()

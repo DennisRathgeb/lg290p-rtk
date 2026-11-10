@@ -37,6 +37,13 @@ rc=$?
 set -e
 [ "$rc" -eq 2 ] || fail "unknown command should exit 2, got $rc"
 
+# Numbers that do not fit an int are usage errors, not silently truncated.
+set +e
+"$LGRTK" --baud 99999999999 version >/dev/null 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 2 ] || fail "--baud 99999999999 should exit 2, got $rc"
+
 out=$("$LGRTK" --port "$PORT" watch --count 3) || fail "watch exit $?"
 [ "$(grep -c "single" <<<"$out")" -ge 3 ] || fail "watch: $out"
 
