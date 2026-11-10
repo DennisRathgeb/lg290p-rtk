@@ -12,6 +12,7 @@
 
 #include "daemon/gpsd_json.h"
 #include "daemon/sd_notify.h"
+#include "internal/clock.h"
 #include "internal/unique_fd.h"
 #include "lgrtk/lg290p.h"
 #include "lgrtk/version.h"
@@ -19,10 +20,10 @@
 namespace lgrtk::daemon {
 namespace {
 
-int64_t ClockNs(clockid_t id) {
+int64_t RealtimeNs() {
   timespec ts{};
-  clock_gettime(id, &ts);
-  return static_cast<int64_t>(ts.tv_sec) * 1000000000 + ts.tv_nsec;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  return static_cast<int64_t>(ts.tv_sec) * internal::kNsPerS + ts.tv_nsec;
 }
 
 void Log(const std::string& msg) { std::fprintf(stderr, "%s\n", msg.c_str()); }
@@ -129,7 +130,7 @@ void Daemon::StartDevices() {
     // Arrival in system time: CLOCK_REALTIME now minus the time since the
     // epoch's last byte was read (CLOCK_MONOTONIC).
     const int64_t arrival =
-        ClockNs(CLOCK_REALTIME) - (ClockNs(CLOCK_MONOTONIC) - f.t_arrival_ns);
+        RealtimeNs() - (internal::MonotonicNs() - f.t_arrival_ns);
     if (ntrip_) {
       ntrip_->SetPosition(f);
     }
@@ -239,7 +240,7 @@ nlohmann::json Daemon::StatusJson() const {
     j["rtcm_injected"] = s.rtcm_injected;
     j["bad_nmea"] = s.framer.bad_nmea;
     j["last_fix_age_ms"] =
-        s.last_fix_age_ns < 0 ? -1 : s.last_fix_age_ns / 1000000;
+        s.last_fix_age_ns < 0 ? -1 : s.last_fix_age_ns / internal::kNsPerMs;
     j["last_error"] = s.last_error;
   }
   j["gpsd_clients"] = gpsd_->Clients();

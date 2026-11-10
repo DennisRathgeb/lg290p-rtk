@@ -3,6 +3,8 @@
 
 #include <utility>
 
+#include "internal/text.h"
+
 namespace lgrtk::daemon {
 namespace {
 
@@ -121,9 +123,7 @@ void GpsdServer::PublishFix(const Fix& fix) {
 }
 
 void GpsdServer::PublishNmea(std::string_view line) {
-  while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
-    line.remove_suffix(1);
-  }
+  line = internal::TrimLineEnd(line);
   if (line.empty()) {
     return;
   }

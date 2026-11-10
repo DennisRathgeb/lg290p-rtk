@@ -92,7 +92,7 @@ TEST(SkyTest, SkyJsonCounts) {
   SkyTracker s;
   FeedGpsGroup(&s);
   s.FeedNmea(Nmea("GNGSA,A,3,10,12,,,,,,,,,,,2.38,1.26,2.01,1"));
-  std::string line = SkyJson(s, "/dev/x", 1789084800000000000LL);
+  std::string line = SkyJson(s, "/dev/x", 1'789'084'800'000'000'000LL);
   ASSERT_EQ(line.substr(line.size() - 2), "\r\n");
   auto j = nlohmann::json::parse(line.substr(0, line.size() - 2));
   EXPECT_EQ(j["class"], "SKY");

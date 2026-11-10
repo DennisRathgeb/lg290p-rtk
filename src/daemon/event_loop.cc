@@ -14,20 +14,17 @@
 
 #include <cerrno>
 #include <cstring>
-#include <ctime>
 #include <memory>
 #include <utility>
 
+#include "internal/clock.h"
+#include "internal/text.h"
 #include "internal/unix_socket.h"
 
 namespace lgrtk::daemon {
 namespace {
 
-int64_t NowMs() {
-  timespec ts{};
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return static_cast<int64_t>(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
-}
+int64_t NowMs() { return internal::MonotonicNs() / internal::kNsPerMs; }
 
 std::string Errno(const std::string& what) {
   return what + ": " + std::strerror(errno);  // NOLINT(concurrency-mt-unsafe)
@@ -315,11 +312,10 @@ void ClientSet::OnEvents(Id id, short revents) {
     if (nl == std::string::npos) {
       break;
     }
-    std::string line = c->in.substr(start, nl - start);
+    // A copy: the handler may close the client and free its buffer.
+    const std::string line(internal::TrimLineEnd(
+        std::string_view(c->in).substr(start, nl - start)));
     start = nl + 1;
-    if (!line.empty() && line.back() == '\r') {
-      line.pop_back();
-    }
     if (h_.on_line) {
       h_.on_line(id, line);
     }

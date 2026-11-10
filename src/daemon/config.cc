@@ -154,7 +154,7 @@ std::optional<DaemonConfig> ParseConfig(std::string_view text,
   });
   DaemonConfig c;
   r.Get("receiver", "port", &c.receiver.port);
-  r.Get("receiver", "baud", &c.receiver.baud, 4800, 3000000);
+  r.Get("receiver", "baud", &c.receiver.baud, 4800, 3'000'000);
   r.Get("receiver", "apply_config", &c.receiver.apply_config);
   r.Get("gpsd", "listen", &c.gpsd_listen);
   r.Get("gpsd", "device_name", &c.device_name);
@@ -163,7 +163,7 @@ std::optional<DaemonConfig> ParseConfig(std::string_view text,
   r.Get("control", "sock", &c.control_sock);
   r.Get("ntrip", "enabled", &c.ntrip.enabled);
   r.Get("ntrip", "host", &c.ntrip.host);
-  r.Get("ntrip", "port", &c.ntrip.port, 1, 65535);
+  r.Get("ntrip", "port", &c.ntrip.port, 1, internal::kMaxPort);
   r.Get("ntrip", "mountpoint", &c.ntrip.mountpoint);
   r.Get("ntrip", "user", &c.ntrip.user);
   r.Get("ntrip", "password_file", &c.ntrip.password_file);

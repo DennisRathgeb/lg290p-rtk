@@ -4,12 +4,12 @@
 #include <sys/socket.h>
 
 #include "daemon/gpsd_json.h"
+#include "internal/clock.h"
 
 namespace lgrtk::daemon {
 namespace {
 
 constexpr int kMagic = 0x534f434b;
-constexpr int64_t kNsPerS = 1000000000;
 
 static_assert(sizeof(ChronySample) == 40, "chrony sock_sample layout");
 
@@ -26,10 +26,10 @@ std::optional<ChronySample> MakeChronySample(const Fix& fix,
   }
   const int64_t diff = *fix_ns - arrival_realtime_ns;
   ChronySample s{};
-  s.tv.tv_sec = static_cast<time_t>(arrival_realtime_ns / kNsPerS);
-  s.tv.tv_usec =
-      static_cast<suseconds_t>((arrival_realtime_ns % kNsPerS) / 1000);
-  s.offset = static_cast<double>(diff) / 1e9;
+  s.tv.tv_sec = static_cast<time_t>(arrival_realtime_ns / internal::kNsPerS);
+  s.tv.tv_usec = static_cast<suseconds_t>(
+      (arrival_realtime_ns % internal::kNsPerS) / internal::kNsPerUs);
+  s.offset = static_cast<double>(diff) / static_cast<double>(internal::kNsPerS);
   s.magic = kMagic;
   return s;
 }
