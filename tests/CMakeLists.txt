@@ -42,6 +42,7 @@ if(LGRTK_BUILD_DAEMON)
   add_executable(lgrtkd_tests
     daemon/config_test.cc
     daemon/gpsd_json_test.cc
+    daemon/sky_test.cc
   )
   target_include_directories(lgrtkd_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries(lgrtkd_tests PRIVATE util lgrtkd_core GTest::gtest_main lgrtk_warnings)
