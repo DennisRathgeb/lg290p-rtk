@@ -7,8 +7,9 @@
 
 #include <cctype>
 #include <cerrno>
-#include <cstdio>
+#include <charconv>
 #include <cstring>
+#include <system_error>
 #include <utility>
 
 #include "internal/clock.h"
@@ -127,8 +128,24 @@ std::string Lower(std::string s) {
 }
 
 bool ParseChunkSize(std::string_view line, size_t& size) noexcept {
-  const std::string copy(line);
-  return std::sscanf(copy.c_str(), "%zx", &size) == 1;
+  // chunk-size [ BWS ";" chunk-ext ] (RFC 9112 7.1); blanks around the size
+  // are tolerated.
+  line = line.substr(0, line.find(';'));
+  auto blank = [](char c) { return c == ' ' || c == '\t'; };
+  while (!line.empty() && blank(line.front())) {
+    line.remove_prefix(1);
+  }
+  while (!line.empty() && blank(line.back())) {
+    line.remove_suffix(1);
+  }
+  size_t v = 0;
+  const auto r = std::from_chars(line.data(), line.data() + line.size(), v, 16);
+  if (line.empty() || r.ec != std::errc{} ||
+      r.ptr != line.data() + line.size()) {
+    return false;
+  }
+  size = v;
+  return true;
 }
 
 }  // namespace lgrtk::internal

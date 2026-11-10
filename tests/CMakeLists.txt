@@ -19,6 +19,7 @@ add_executable(lgrtk_tests
   receiver_test.cc
   projection_test.cc
   ntrip_test.cc
+  net_test.cc
   sim/fake_caster.cc
   sim/sim_lg290p.cc
 )
