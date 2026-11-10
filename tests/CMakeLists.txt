@@ -10,6 +10,7 @@ include(GoogleTest)
 
 add_executable(lgrtk_tests
   version_test.cc
+  framer_test.cc
 )
 target_link_libraries(lgrtk_tests PRIVATE lgrtk::lgrtk GTest::gtest_main lgrtk_warnings)
 target_compile_definitions(lgrtk_tests PRIVATE LGRTK_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
