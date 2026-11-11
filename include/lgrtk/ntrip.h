@@ -111,6 +111,8 @@ class NtripClient {
   void StreamLoop(int fd, bool chunked, std::string_view early);
   /// Records `why` as the last error.
   void Fail(const std::string& why);
+  /// Ends the session in kAuthFailed (HTTP 401): no reconnects.
+  void AuthFailed();
   bool BackoffWait();
   bool StopRequested() const { return stop_.load(std::memory_order_relaxed); }
 

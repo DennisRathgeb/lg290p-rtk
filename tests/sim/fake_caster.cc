@@ -155,6 +155,48 @@ void FakeCaster::Serve(int fd) {
       SendAll(fd, r, sizeof r - 1);
       break;
     }
+    case Mode::kProxyUnauthorizedV1: {
+      const char ok[] = "ICY 200 OK\r\n\r\n";
+      SendAll(fd, ok, sizeof ok - 1);
+      // The backend answers once the position has arrived (or after 1 s).
+      bool have = end != std::string::npos && req.size() > end + 4;
+      const auto wait =
+          std::chrono::steady_clock::now() + std::chrono::seconds(1);
+      while (!have && std::chrono::steady_clock::now() < wait) {
+        pollfd p{fd, POLLIN, 0};
+        if (::poll(&p, 1, 50) <= 0) {
+          continue;
+        }
+        const ssize_t n = ::recv(fd, buf, sizeof buf, 0);
+        if (n <= 0) {
+          return;
+        }
+        std::scoped_lock lk(mu_);
+        client_bytes_.append(buf, static_cast<size_t>(n));
+        have = true;
+      }
+      const char r[] =
+          "HTTP/1.0 401 Unauthorized\r\nServer: NTRIP IQProxy 1.2/1.0\r\n"
+          "Content-Type: text/html\r\nWWW-Authenticate: Basic "
+          "realm=\"/NALPS\"\r\n\r\n<html>401 Unauthorized</html>";
+      SendAll(fd, r, sizeof r - 1);
+      return;
+    }
+    case Mode::kProxyUnauthorizedV2:
+    case Mode::kProxyUnavailable: {
+      const std::string r =
+          std::string(
+              "HTTP/1.1 200 OK\r\nServer: NTRIP IQProxy/1.2\r\n"
+              "Content-Type: gnss/data\r\nNtrip-Version: Ntrip/2.0"
+              "\r\nConnection: close\r\n\r\n") +
+          (mode_ == Mode::kProxyUnauthorizedV2
+               ? "HTTP/1.1 401 Unauthorized\r\nContent-Length: 24\r\n\r\n"
+                 "<html>401 Unauthorized</html>"
+               : "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0"
+                 "\r\n\r\n");
+      SendAll(fd, r.data(), r.size());
+      return;
+    }
     default: {
       const char r[] =
           "HTTP/1.1 200 OK\r\nNtrip-Version: Ntrip/2.0\r\nContent-Type: "

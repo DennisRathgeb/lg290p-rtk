@@ -26,6 +26,8 @@ using internal::MsToNs;
 
 // Receive buffer for the caster connection.
 constexpr size_t kRecvBufferSize = 4096;
+// Bytes before the first RTCM frame searched for a status line from a proxy.
+constexpr size_t kMaxStreamStatusBytes = 512;
 // FetchSourcetable: TCP connect, then the whole table.
 constexpr int kSourcetableConnectTimeoutMs = 5000;
 constexpr int kSourcetableReadTimeoutMs = 10000;
@@ -417,10 +419,7 @@ void NtripClient::Session() {
       status_.http_status = response->status;
     }
     if (response->status == kHttpUnauthorized) {
-      // SetState records the reason as the last error.
-      SetState(NtripState::kAuthFailed,
-               "HTTP 401 Unauthorized for mountpoint '" + opt_.mountpoint +
-                   "': check user name and password");
+      AuthFailed();
       return;
     }
     if (response->status != kHttpOk) {
@@ -445,20 +444,95 @@ void NtripClient::Session() {
   StreamLoop(sock.Get(), response->chunked, response->body);
 }
 
+void NtripClient::AuthFailed() {
+  {
+    std::scoped_lock lk(mu_);
+    status_.http_status = kHttpUnauthorized;
+  }
+  // SetState records the reason as the last error.
+  SetState(NtripState::kAuthFailed, "HTTP 401 Unauthorized for mountpoint '" +
+                                        opt_.mountpoint +
+                                        "': check user name and password");
+}
+
 void NtripClient::StreamLoop(int fd, bool chunked, std::string_view early) {
   StreamFramer framer;
   internal::Dechunker dechunk;
+  // An NTRIP proxy (e.g. IQProxy) may answer 200 at once and pass the
+  // caster's own answer on in the stream: until the first RTCM frame, a
+  // payload that starts with an HTTP status line is that answer.
+  bool seen_rtcm = false;
+  std::string head;  // payload before the first RTCM frame, while it may be
+                     // a status line
+  std::string stream_error;  // set: end the session with this failure
+  bool auth_failed = false;
+  auto check_head = [&](std::string_view data) {
+    if (seen_rtcm || head.size() >= kMaxStreamStatusBytes) {
+      return;
+    }
+    if (head.empty()) {  // "ICY 200 OK\r\n\r\n": the blank line arrives here
+      const size_t start = data.find_first_not_of("\r\n");
+      if (start == std::string_view::npos) {
+        return;
+      }
+      data.remove_prefix(start);
+    }
+    head.append(data.substr(
+        0, std::min(data.size(), kMaxStreamStatusBytes - head.size())));
+    constexpr std::string_view kHttp = "HTTP/";
+    if (head.compare(0, std::min(head.size(), kHttp.size()), kHttp, 0,
+                     std::min(head.size(), kHttp.size())) != 0) {
+      head.resize(kMaxStreamStatusBytes);  // not a status line: stop looking
+      return;
+    }
+    const size_t eol = head.find("\r\n");
+    if (eol == std::string::npos) {
+      return;
+    }
+    const std::string line = head.substr(0, eol);
+    int status = 0;
+    if (!internal::ParseHttpStatus(line, status)) {
+      return;
+    }
+    if (status == kHttpUnauthorized) {
+      auth_failed = true;
+    } else if (status != kHttpOk) {
+      {
+        std::scoped_lock lk(mu_);
+        status_.http_status = status;
+      }
+      stream_error = "HTTP " + std::to_string(status) +
+                     " from caster in the stream: " + line;
+    }
+    head.resize(kMaxStreamStatusBytes);
+  };
   auto forward = [&](std::string_view data) {
+    check_head(data);
     framer.Feed(
         std::span(reinterpret_cast<const uint8_t*>(data.data()), data.size()),
         [&](const Frame& f) {
           if (f.kind != FrameKind::kRtcm) {
             return;
           }
+          seen_rtcm = true;
+          // Only corrections count as a working connection.
+          backoff_ms_ = opt_.backoff_min_ms;
           sink_.Inject(f.bytes);
           std::scoped_lock lk(mu_);
           ++status_.frames;
         });
+  };
+  // True when check_head found the caster's error: the session ends here.
+  auto ended = [&] {
+    if (auth_failed) {
+      AuthFailed();
+      return true;
+    }
+    if (!stream_error.empty()) {
+      Fail(stream_error);
+      return true;
+    }
+    return false;
   };
   auto consume = [&](std::string_view data) {
     {
@@ -466,7 +540,6 @@ void NtripClient::StreamLoop(int fd, bool chunked, std::string_view early) {
       status_.bytes += data.size();
       last_data_ns_ = MonotonicNs();
     }
-    backoff_ms_ = opt_.backoff_min_ms;
     if (!chunked) {
       forward(data);
       return true;
@@ -475,6 +548,9 @@ void NtripClient::StreamLoop(int fd, bool chunked, std::string_view early) {
   };
   if (!early.empty() && !consume(early)) {
     Fail("bad chunked encoding");
+    return;
+  }
+  if (ended()) {
     return;
   }
 
@@ -516,6 +592,9 @@ void NtripClient::StreamLoop(int fd, bool chunked, std::string_view early) {
     }
     if (!consume(std::string_view(buf.data(), static_cast<size_t>(n)))) {
       Fail("bad chunked encoding");
+      return;
+    }
+    if (ended()) {
       return;
     }
   }

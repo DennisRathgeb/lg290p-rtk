@@ -21,6 +21,14 @@ class FakeCaster {
     kDropAfterOne,  ///< sends one frame, then closes (every connection)
     kSilent,        ///< 200 OK, then no data
     kSourcetable,   ///< answers every request with its sourcetable, closes
+    /// An NTRIP proxy (IQProxy): "ICY 200 OK", then, after the client's
+    /// first bytes (the GGA), the backend's "HTTP/1.0 401" in the stream.
+    kProxyUnauthorizedV1,
+    /// The same for v2: HTTP/1.1 200 (not chunked), then "HTTP/1.1 401" in
+    /// the stream at once, then close.
+    kProxyUnauthorizedV2,
+    /// HTTP/1.1 200 (not chunked), then "HTTP/1.1 503" in the stream, close.
+    kProxyUnavailable,
   };
   explicit FakeCaster(Mode mode);
   ~FakeCaster();

@@ -14,6 +14,10 @@ Fixes:
 - `lgrtkd`: `STOPPING=1` is sent to systemd once, not twice.
 - `lgrtk ntrip run`: an empty password file is an error again (it connected without a
   password); `lgrtk probe` keeps the start-up GGA in its report.
+- NTRIP behind a proxy (e.g. IQProxy) that answers `200`/`ICY 200 OK` at once and passes the
+  caster's `401` on inside the stream: now `auth-failed` after one connection instead of a
+  reconnect about once a second. Another HTTP error in the stream is a failure with backoff, and
+  only RTCM frames reset the backoff.
 - Socket paths starting with `@` are ordinary file names; only `$NOTIFY_SOCKET` uses abstract
   sockets (a configured `@` control socket would otherwise lose its file permissions).
 
