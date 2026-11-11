@@ -151,6 +151,60 @@ TEST(NtripTest, AuthFailureStops) {
       << c.Status().last_error;
 }
 
+// A proxy answers 200 at once and passes the backend's 401 on in the stream
+// (IQProxy): still an authentication failure, one connection, no retries.
+TEST(NtripTest, AuthFailureInStreamStopsV1) {
+  FakeCaster caster(FakeCaster::Mode::kProxyUnauthorizedV1);
+  VecSink sink;
+  NtripOptions o = Opts(caster, 1);
+  o.send_gga = true;
+  NtripClient c(o, sink);
+  c.SetPosition(SomeFix());
+  ASSERT_TRUE(c.Start());
+  ASSERT_TRUE(
+      WaitFor([&] { return c.Status().state == NtripState::kAuthFailed; }, 3s))
+      << c.Status().last_error;
+  std::this_thread::sleep_for(500ms);
+  EXPECT_EQ(caster.Connections(), 1);
+  EXPECT_EQ(c.Status().http_status, 401);
+  EXPECT_EQ(sink.Count(), 0u);
+}
+
+TEST(NtripTest, AuthFailureInStreamStopsV2) {
+  FakeCaster caster(FakeCaster::Mode::kProxyUnauthorizedV2);
+  VecSink sink;
+  NtripClient c(Opts(caster), sink);
+  ASSERT_TRUE(c.Start());
+  ASSERT_TRUE(
+      WaitFor([&] { return c.Status().state == NtripState::kAuthFailed; }, 3s))
+      << c.Status().last_error;
+  std::this_thread::sleep_for(500ms);
+  EXPECT_EQ(caster.Connections(), 1);
+  EXPECT_EQ(c.Status().http_status, 401);
+}
+
+// Another error in the stream is a failure with backoff: the bytes of the
+// error are not corrections, so they must not reset the backoff.
+TEST(NtripTest, ErrorInStreamBacksOff) {
+  FakeCaster caster(FakeCaster::Mode::kProxyUnavailable);
+  VecSink sink;
+  NtripOptions o = Opts(caster);
+  o.backoff_min_ms = 50;
+  o.backoff_max_ms = 400;
+  NtripClient c(o, sink);
+  ASSERT_TRUE(c.Start());
+  ASSERT_TRUE(WaitFor(
+      [&] { return c.Status().last_error.find("503") != std::string::npos; },
+      2s))
+      << c.Status().last_error;
+  std::this_thread::sleep_for(1s);
+  c.Stop();
+  // 50 + 100 + 200 + 400 ms: at most about five connections in the second,
+  // not the twenty a reset backoff would make.
+  EXPECT_LE(caster.Connections(), 6);
+  EXPECT_EQ(sink.Count(), 0u);
+}
+
 TEST(NtripTest, ReconnectsAfterDrop) {
   FakeCaster caster(FakeCaster::Mode::kDropAfterOne);
   VecSink sink;
